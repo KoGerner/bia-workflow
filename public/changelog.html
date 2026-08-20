@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release notes — BIA Workflow</title>
+<meta name="description" content="What changed in the BIA Workflow assistant, newest first, in plain language.">
+<!--
+  Hand-written, deliberately: this page changes more often than the built pages, and a builder
+  would put a publish round between every edit and the reader. Served straight from the checkout
+  by `location = /changelog`, so an update is a git pull and nothing else.
+
+  Visual system: the Ditto style reference (KG, 2026-08-20) — warm parchment canvas, India Ink
+  type at poster scale with hard negative tracking, everything pill-shaped, and the annotation
+  palette carried by the area tags. No shadows, no gradients, light theme only. ABC Social is
+  licensed and not self-hostable here, so the stack substitutes Inter/system-ui as the reference
+  itself names; the "ss07" set therefore cannot be applied.
+
+  The annotation palette is no longer on this page (owner ask, 2026-08-20): the prefix is bold
+  India Ink, not a coloured fill, so the four bright inks went with the rule that governed them.
+  If a colour ever comes back here it goes on a FILL, never on text — Highlight Green (#3e6b15)
+  under India Ink measures 3.32:1 and fails, and yellow as text on parchment is about 1.3:1.
+  Nothing is left of the palette: the gold rule went with the note card on the same day.
+
+  Ordered by the reader's question, with the release date carried per line (owner ruling
+  2026-08-20, after Hans —
+  the BC-manager seat — read the dated version twice): does what I already ran still stand · what
+  is different next time · what was withdrawn. Hans's line was "i dont care what happened on the
+  18th against the 20th, i care what is true this morning", and the first section is the only
+  reason he said he would open the page at all — but the chronology still has to be visible, so
+  the three 43px date headings became a 54px date column and each section runs newest first.
+  Both axes at once: read down a section for what it means to you, read the left edge for when.
+
+  The buzz `type(scope):` prefix stays, at regular weight, by owner ask. It is graphite so it
+  reads as a label rather than as the first words of the sentence. Two carry-overs from Hans that
+  are easy to undo by accident: MTPD is his word, not "survival time" — he is not the audience
+  that needs it softened; and "the same 17 findings, printed as 5 lines, none dropped" must keep
+  its second half, because "17 became 5" reads to an outside auditor as twelve findings deleted.
+
+  Removed 2026-08-20, by owner ask, none to be reintroduced quietly:
+    · marker ink over running text (.ink / .m-*), and with it the scaffolding that existed only
+      to seat ink behind glyphs — `isolation:isolate` on .body and the z-index:-1 pseudo-element;
+    · the rail's position marker and its IntersectionObserver. The observer watched a band
+      10–30% down the viewport, and the last entry has no viewport of content below it to push
+      that heading into the band, so clicking "18 August" fell back to dates[0] and the marker
+      snapped back to the top. A 43px date heading already says which release you are reading.
+      The rail is plain links now; if a marker is ever wanted again, a click handler that sets
+      .on is five lines and has no band to fall out of;
+    · every second sentence, then the area headings and the per-date theme lines. The prefix
+      carries the category now, so the heading was paying two lines for one word;
+    · the lede under the masthead, the colour on the prefix, and the "how to read this page"
+      card. The footer already carries the standing disclaimer, so the card said it twice.
+-->
+<style>
+:root{
+  /* Ditto neutrals — parchment canvas, India Ink type. No accent hue anywhere: a link
+     earns its distinction from an underline, not a colour. */
+  --parchment:#f7f5f3; --ink:#000; --charcoal:#222; --graphite:#6a6559;
+  --bone:#fff; --smoke:#e2e2e2; --linen:#dcd8cf;
+  --sans:Inter,"GT Walsheim",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The reference's type scale, verbatim. Tracking is per size and gets harder as the
+     size grows — that negative tracking on display sizes is the system's signature and
+     must not be normalised. */
+  --t-caption:13px;    --lh-caption:1.43; --ls-caption:.1px;
+  --t-body-sm:16px;    --lh-body-sm:1.43; --ls-body-sm:-.16px;
+  --t-body:18px;       --lh-body:1.43;    --ls-body:-.22px;
+  --t-subheading:26px; --lh-subheading:1.2;  --ls-subheading:-.52px;
+  --t-heading-sm:35px; --lh-heading-sm:1.2;  --ls-heading-sm:-.35px;
+  --t-heading:43px;    --lh-heading:1.05;    --ls-heading:-.99px;
+  --t-heading-lg:72px; --lh-heading-lg:1;    --ls-heading-lg:-2.88px;
+  --t-display:108px;   --lh-display:.95;     --ls-display:-4.32px;
+  /* Radii, verbatim: pill for buttons/tags/nav, 12px for cards and images, 28px for
+     inputs and inputs only — it is the highest non-pill radius in the system. */
+  --r-pill:9999px; --r-card:12px; --r-input:28px;
+  --shell:1200px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--parchment);color:var(--ink);
+  font:400 var(--t-body)/var(--lh-body) var(--sans);letter-spacing:var(--ls-body);-webkit-text-size-adjust:100%}
+.shell{max-width:var(--shell);margin:0 auto;padding:44px 24px 72px}
+
+/* ── masthead ─────────────────────────────────────────────────────────── */
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:16px;
+  padding-bottom:28px;border-bottom:1px solid var(--linen)}
+.mark{font-weight:700;font-size:var(--t-body-sm);letter-spacing:var(--ls-body-sm);margin-right:auto}
+.mark a{color:var(--ink);text-decoration:none}
+.cta{display:inline-block;background:var(--ink);color:var(--bone);border:1px solid var(--ink);
+  border-radius:var(--r-pill);padding:8px 15px;font-weight:700;font-size:var(--t-body-sm);
+  letter-spacing:var(--ls-body-sm);
+  text-decoration:none}
+.cta:hover{background:var(--charcoal);border-color:var(--charcoal)}
+.ghost{color:var(--ink);font-size:var(--t-body-sm);letter-spacing:var(--ls-body-sm);
+  text-decoration:none;border-bottom:1px solid var(--linen)}
+.ghost:hover{border-bottom-color:var(--ink)}
+
+/* display on the reference scale: 108px at -4.32px, clamped down for narrow viewports. The
+   hard negative tracking at this size is the signature — never normalise it. */
+h1{font-weight:700;font-size:clamp(3rem,1.4rem + 6.2vw,var(--t-display));
+  line-height:var(--lh-display);letter-spacing:var(--ls-display);margin:44px 0 0}
+.stamp{font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--ls-caption);
+  text-transform:uppercase;
+  color:var(--graphite);margin:18px 0 0}
+
+/* ── body: date rail + entries ────────────────────────────────────────── */
+.body{margin-top:36px}
+.sec{font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--ls-caption);
+  text-transform:uppercase;
+  color:var(--graphite);font-weight:400;margin:0 0 10px}
+.sec + ul{margin:0 0 26px}
+/* the buzz prefix, restored at regular weight (owner ask). Graphite, not India Ink: at 400 it
+   would otherwise read as the first words of the sentence, and Hans's complaint was that the
+   bracket eats the start of the line where his eye lands. */
+/* the date each line shipped, in a fixed column so the chronology reads straight down the page
+   even though the sections are ordered by the reader's question rather than by release */
+/* min-width, not width: at the 18px body size "19 Aug" very nearly fills 54px, so a hard width
+   left the date touching the prefix. The padding is what guarantees the gap; min-width only
+   keeps the column aligned. The date also drops to body-sm so the line starts quieter. */
+.d{display:inline-block;min-width:52px;padding-right:12px;color:var(--graphite);
+  white-space:nowrap;font-size:var(--t-body-sm);letter-spacing:var(--ls-body-sm);
+  font-variant-numeric:tabular-nums}
+.k{color:var(--graphite);white-space:nowrap}
+.was{font-size:var(--t-caption);letter-spacing:var(--ls-caption);text-transform:uppercase;
+  color:var(--graphite);
+  white-space:nowrap;margin-left:8px}
+.ev{font-size:var(--t-caption);letter-spacing:var(--ls-caption);text-transform:uppercase;
+  white-space:nowrap;margin-left:8px}
+.ev-yes{color:var(--ink);font-weight:700}
+.ev-no{color:var(--graphite)}
+
+ul{list-style:none;margin:0;padding:0}
+li{padding:0 0 8px;max-width:76ch}
+li b{font-weight:700}
+
+
+/* The same destinations again at the foot of a long page. Not interconnection for its own
+   sake — the guide is 35KB, so a reader who reaches the bottom is eight screens from the top
+   nav. Short pages do not need it and app surfaces do not get it.
+   Shape-only pills, per the reference: no fill on default, and the current page is marked by
+   weight 700 rather than an underline. */
+.foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
+.foot a,.foot span{font-size:var(--t-body-sm);letter-spacing:var(--ls-body-sm);
+  border:1px solid var(--linen);border-radius:var(--r-pill);padding:5px 12px;
+  color:var(--ink);text-decoration:none}
+.foot a:hover{border-color:var(--ink)}
+.foot span{font-weight:700;border-color:var(--ink)}
+/* a.cta, not .cta: `.foot a` above is (0,1,1) and beats a bare `.cta` at (0,1,0), so the
+   black pill inherited --ink for its text and rendered black-on-black at 1:1. Token-level
+   contrast checks cannot see this — they compare declared values, not the cascade. */
+.foot a.cta{color:var(--bone);border-color:var(--ink);padding:5px 12px}
+.foot a.cta:hover{background:var(--charcoal);border-color:var(--charcoal)}
+footer{margin-top:20px;padding-top:20px;border-top:1px solid var(--linen);
+  font-size:var(--t-caption);letter-spacing:var(--ls-caption);text-transform:uppercase;
+  color:var(--graphite)}
+
+a:focus-visible,.cta:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+@media(max-width:860px){
+  .body{margin-top:28px}
+  .d{width:auto;margin-right:8px}
+  .was,.ev{display:block;margin:2px 0 0}
+}
+</style>
+
+<div class="shell">
+
+  <div class="top">
+    <p class="mark"><a href="/demo/kb/">BIA Workflow</a></p>
+    <a class="ghost" href="/demo/bia-workflow-guide/">Manager&rsquo;s guide</a>
+    <a class="cta" href="/demo/bia-live/">Try the demo</a>
+  </div>
+
+  <h1>Release<br>notes</h1>
+  <p class="stamp">Updated 20 August 2026</p>
+
+  <div class="body">
+
+    <p class="sec">Check the BIA you already have</p>
+    <ul>
+      <li><time class="d" datetime="2026-08-19">19 Aug</time> <span class="k">fix(checks):</span> A resource that returns at the deadline is a rejection, not a pass &mdash; a
+        record signed before 19 August can hold pairs that now fail <span class="was">was broken</span> <span class="ev ev-yes">seen live</span></li>
+      <li><time class="d" datetime="2026-08-18">18 Aug</time> <span class="k">fix(checks):</span> The assistant&rsquo;s own drafts no longer count as interview evidence, so an
+        evidence base that cited one is now short a source <span class="was">was broken</span></li>
+      <li><time class="d" datetime="2026-08-18">18 Aug</time> <span class="k">fix(files):</span> Each BIA writes to its own folder; runs before 18 August shared one, so check
+        nothing was overwritten <span class="was">was broken</span></li>
+    </ul>
+
+    <p class="sec">What is different the next time you run it</p>
+    <ul>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">refine(checks):</span> Findings are grouped one line per activity instead of one per resource &mdash;
+        the same 17 findings, printed as 5 lines, none dropped</li>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">refine(checks):</span> Where no resource can return inside the MTPD, the assistant questions the
+        MTPD instead of listing every resource</li>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">add(checks):</span> The assistant will not leave stage 1 until it has read your method and your
+        dependency register &mdash; it reads them, not you <span class="ev ev-no">not yet seen live</span></li>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">add(checks):</span> Where two departments disagree on how fast a shared resource must return, the
+        stricter deadline binds</li>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">refine(method):</span> Each impact category prints its quotation beside its own score</li>
+      <li><time class="d" datetime="2026-08-19">19 Aug</time> <span class="k">refine(talk):</span> Every turn ends with a question or two or three numbered options</li>
+      <li><time class="d" datetime="2026-08-19">19 Aug</time> <span class="k">refine(talk):</span> Turns are under half as long, and the stage banner appears only when the stage
+        moves</li>
+      <li><time class="d" datetime="2026-08-19">19 Aug</time> <span class="k">refine(method):</span> Every stage carries its practitioner name: scope, interview, standardised
+        template, requirements, consolidation and handover</li>
+      <li><time class="d" datetime="2026-08-18">18 Aug</time> <span class="k">add(files):</span> Every save returns an openable link and a receipt naming the file and its size</li>
+    </ul>
+
+    <p class="sec">Corrected, and withdrawn</p>
+    <ul>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">remove(method):</span> The claim that staffing above a department&rsquo;s headcount is checked
+        automatically was untrue and is gone; the facilitator is still asked to look <span class="was">was broken</span></li>
+      <li><time class="d" datetime="2026-08-20">20 Aug</time> <span class="k">fix(method):</span> One interview quotation can no longer be the evidence for several impact
+        categories <span class="was">was broken</span></li>
+      <li><time class="d" datetime="2026-08-19">19 Aug</time> <span class="k">remove(talk):</span> The assistant no longer announces what it is about to do before doing it</li>
+      <li><time class="d" datetime="2026-08-18">18 Aug</time> <span class="k">add(service):</span> The experimental chat window is retired; the assistant is at
+        <b>agent.ai4bcm.org</b>, reached through Teams or the embedded browser</li>
+      <li><time class="d" datetime="2026-08-18">18 Aug</time> <span class="k">refine(service):</span> The public demo uses demonstration data only</li>
+    </ul>
+
+    <nav class="foot" aria-label="Site">
+      <a href="/demo/kb/">Knowledge base</a>
+      <a href="/demo/bia-workflow-guide/">Manager&rsquo;s guide</a>
+      <span>Release notes</span>
+      <a class="cta" href="/demo/bia-live/">Try the demo</a>
+  </nav>
+
+    <footer>Changes of 18&ndash;20 August 2026 &nbsp;·&nbsp; BIA Workflow &nbsp;·&nbsp; AI
+    Addendum &nbsp;·&nbsp; guidance, not authoritative legal or compliance advice</footer>
+
+  </div>
+</div>

@@ -1,0 +1,182 @@
+{
+  "title": "Fixture knowledge index (synthetic, not the AI Addendum)",
+  "chunk_count": 22,
+  "topics": [
+    {
+      "id": "faq-can-ai-update-my-bcp-automatically",
+      "title": "Can AI update my BCP automatically?",
+      "breadcrumb": "Can AI update my BCP automatically?",
+      "pp": "pp5",
+      "section_type": "faq",
+      "url": "https://example.invalid/kb/faq-can-ai-update-my-bcp-automatically/"
+    },
+    {
+      "id": "faq-how-do-i-use-ai-to-review-a-continuity-plan",
+      "title": "How do I use AI to review a continuity plan?",
+      "breadcrumb": "How do I use AI to review a continuity plan?",
+      "pp": "pp5",
+      "section_type": "faq",
+      "url": "https://example.invalid/kb/faq-how-do-i-use-ai-to-review-a-continuity-plan/"
+    },
+    {
+      "id": "faq-how-is-chatgpt-or-claude-chat-different-from-claude-code-codex-or-connected-automation",
+      "title": "How is ChatGPT or Claude chat different from Claude Code, Codex, or connected automation?",
+      "breadcrumb": "How is ChatGPT or Claude chat different from Claude Code, Codex, or connected automation?",
+      "pp": null,
+      "section_type": "faq",
+      "url": "https://example.invalid/kb/faq-how-is-chatgpt-or-claude-chat-different-from-claude-code-codex-or-connected-automation/"
+    },
+    {
+      "id": "pp1-introduction",
+      "title": "Introduction",
+      "breadcrumb": "Introduction",
+      "pp": "pp1",
+      "section_type": "introduction",
+      "url": "https://example.invalid/kb/pp1-introduction/"
+    },
+    {
+      "id": "pp3-methods",
+      "title": "Methods and Techniques",
+      "breadcrumb": "Methods and Techniques",
+      "pp": "pp3",
+      "section_type": "methods",
+      "url": "https://example.invalid/kb/pp3-methods/"
+    },
+    {
+      "id": "pp3-minimum_controls",
+      "title": "Minimum controls",
+      "breadcrumb": "Minimum controls",
+      "pp": "pp3",
+      "section_type": "minimum_controls",
+      "url": "https://example.invalid/kb/pp3-minimum_controls/"
+    },
+    {
+      "id": "pp3-outcomes",
+      "title": "Outcomes and Review",
+      "breadcrumb": "Outcomes and Review",
+      "pp": "pp3",
+      "section_type": "outcomes",
+      "url": "https://example.invalid/kb/pp3-outcomes/"
+    },
+    {
+      "id": "pp3-process",
+      "title": "Process",
+      "breadcrumb": "Process",
+      "pp": "pp3",
+      "section_type": "process",
+      "url": "https://example.invalid/kb/pp3-process/"
+    },
+    {
+      "id": "pp3-typical_uses",
+      "title": "Typical AI uses",
+      "breadcrumb": "Typical AI uses",
+      "pp": "pp3",
+      "section_type": "typical_uses",
+      "url": "https://example.invalid/kb/pp3-typical_uses/"
+    },
+    {
+      "id": "pp4-methods",
+      "title": "Methods and Techniques",
+      "breadcrumb": "Methods and Techniques",
+      "pp": "pp4",
+      "section_type": "methods",
+      "url": "https://example.invalid/kb/pp4-methods/"
+    },
+    {
+      "id": "pp4-minimum_controls",
+      "title": "Minimum controls",
+      "breadcrumb": "Minimum controls",
+      "pp": "pp4",
+      "section_type": "minimum_controls",
+      "url": "https://example.invalid/kb/pp4-minimum_controls/"
+    },
+    {
+      "id": "pp4-process",
+      "title": "Process",
+      "breadcrumb": "Process",
+      "pp": "pp4",
+      "section_type": "process",
+      "url": "https://example.invalid/kb/pp4-process/"
+    },
+    {
+      "id": "pp4-typical_uses",
+      "title": "Typical AI uses",
+      "breadcrumb": "Typical AI uses",
+      "pp": "pp4",
+      "section_type": "typical_uses",
+      "url": "https://example.invalid/kb/pp4-typical_uses/"
+    },
+    {
+      "id": "pp5-methods",
+      "title": "Methods and Techniques",
+      "breadcrumb": "Methods and Techniques",
+      "pp": "pp5",
+      "section_type": "methods",
+      "url": "https://example.invalid/kb/pp5-methods/"
+    },
+    {
+      "id": "pp5-minimum_controls",
+      "title": "Minimum controls",
+      "breadcrumb": "Minimum controls",
+      "pp": "pp5",
+      "section_type": "minimum_controls",
+      "url": "https://example.invalid/kb/pp5-minimum_controls/"
+    },
+    {
+      "id": "pp5-outcomes",
+      "title": "Outcomes and Review",
+      "breadcrumb": "Outcomes and Review",
+      "pp": "pp5",
+      "section_type": "outcomes",
+      "url": "https://example.invalid/kb/pp5-outcomes/"
+    },
+    {
+      "id": "pp5-process",
+      "title": "Process",
+      "breadcrumb": "Process",
+      "pp": "pp5",
+      "section_type": "process",
+      "url": "https://example.invalid/kb/pp5-process/"
+    },
+    {
+      "id": "pp5-typical_uses",
+      "title": "Typical AI uses",
+      "breadcrumb": "Typical AI uses",
+      "pp": "pp5",
+      "section_type": "typical_uses",
+      "url": "https://example.invalid/kb/pp5-typical_uses/"
+    },
+    {
+      "id": "pp6-introduction",
+      "title": "Introduction",
+      "breadcrumb": "Introduction",
+      "pp": "pp6",
+      "section_type": "introduction",
+      "url": "https://example.invalid/kb/pp6-introduction/"
+    },
+    {
+      "id": "prompts-bia-output-review-consistency-check",
+      "title": "BIA Output Review - Consistency Check",
+      "breadcrumb": "BIA Output Review - Consistency Check",
+      "pp": "pp3",
+      "section_type": "prompt",
+      "url": "https://example.invalid/kb/prompts-bia-output-review-consistency-check/"
+    },
+    {
+      "id": "prompts-bia-preparation-interview-guide",
+      "title": "BIA Preparation - Interview Guide",
+      "breadcrumb": "BIA Preparation - Interview Guide",
+      "pp": "pp3",
+      "section_type": "prompt",
+      "url": "https://example.invalid/kb/prompts-bia-preparation-interview-guide/"
+    },
+    {
+      "id": "workflows-bia-method-parameters",
+      "title": "BIA method parameters",
+      "breadcrumb": "BIA method parameters",
+      "pp": "pp3",
+      "section_type": "workflow",
+      "url": "https://example.invalid/kb/workflows-bia-method-parameters/"
+    }
+  ]
+}

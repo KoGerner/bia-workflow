@@ -1,0 +1,224 @@
+
+:root {
+  color-scheme: light;
+  /* Ditto neutrals — parchment canvas, India Ink type. No accent hue anywhere: a link
+     earns its distinction from an underline, not a colour. */
+  --parchment:#f7f5f3; --ink:#000; --charcoal:#222; --graphite:#6a6559;
+  --bone:#fff; --smoke:#e2e2e2; --linen:#dcd8cf;
+  --sans:Inter,"GT Walsheim",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The reference's type scale, verbatim. Tracking is per size and gets harder as the
+     size grows — that negative tracking on display sizes is the system's signature and
+     must not be normalised. */
+  --t-caption:13px;    --lh-caption:1.43; --ls-caption:.1px;
+  --t-body-sm:16px;    --lh-body-sm:1.43; --ls-body-sm:-.16px;
+  --t-body:18px;       --lh-body:1.43;    --ls-body:-.22px;
+  --t-subheading:26px; --lh-subheading:1.2;  --ls-subheading:-.52px;
+  --t-heading-sm:35px; --lh-heading-sm:1.2;  --ls-heading-sm:-.35px;
+  --t-heading:43px;    --lh-heading:1.05;    --ls-heading:-.99px;
+  --t-heading-lg:72px; --lh-heading-lg:1;    --ls-heading-lg:-2.88px;
+  --t-display:108px;   --lh-display:.95;     --ls-display:-4.32px;
+  /* Radii, verbatim: pill for buttons/tags/nav, 12px for cards and images, 28px for
+     inputs and inputs only — it is the highest non-pill radius in the system. */
+  --r-pill:9999px; --r-card:12px; --r-input:28px;
+  --shell:1200px;
+}
+/* Fonts and the header band come from brand.py — the estate's one visual system, whose
+   reference implementation is public/changelog.html (Ditto, KG 2026-08-20). Everything BELOW
+   this point keeps its own colours on purpose: on this page a hue is data, not decoration —
+   it encodes breach, warning, owner and evidence state in the graph itself. The reference
+   bans the annotation palette as ORNAMENT; it does not ban a legend. Do not "consolidate"
+   the graph colours without deciding what the reader loses. */
+* { box-sizing: border-box; margin: 0; }
+body { font: 400 var(--t-body-sm)/1.45 var(--sans); letter-spacing: var(--ls-body-sm);
+       color: var(--ink); background: var(--parchment); }
+header { background: var(--parchment); border-bottom: 1px solid var(--linen); padding: 14px 20px; }
+/* The only outbound link on this page. It is noindex and gets handed round as a raw URL, so
+   whoever opens it cold has no idea what product it belongs to — one wordmark fixes that. A
+   full nav under a dependency graph would be noise. */
+header .home { margin: 0 0 4px; font-size: var(--t-caption); line-height: var(--lh-caption);
+               letter-spacing: var(--ls-caption); text-transform: uppercase; }
+header .home a { color: var(--graphite); text-decoration: none;
+                 border-bottom: 1px solid var(--linen); }
+header .home a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+header h1 { font-size: var(--t-subheading); line-height: var(--lh-subheading);
+            letter-spacing: var(--ls-subheading); font-weight: 700; }
+.meta { color: var(--graphite); font-size: var(--t-caption); line-height: var(--lh-caption);
+        letter-spacing: var(--ls-caption); margin-top: 2px; }
+/* The provenance fold sits outside <header>, so the header-scoped rules stop reaching its
+   lines: .meta is unscoped for them (it is worn nowhere else) and the white band they used
+   to inherit from <header> is restated here. Every <code> on the page moved into the fold,
+   which is why no rule chips them any more — the register sha and the evidence shas sit one
+   above the other now and read as the same kind of thing, which is what they are. Two seams
+   to keep shut: the summary drops .meta's margin-top (it is the band's first child, and 2px
+   of body background under the header hairline reads as a gap), and #evidence hands its own
+   border-bottom to the band, which is what ends the strip now — kept, the two doubled. */
+details.provenance { background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+details.provenance summary { cursor: pointer; margin-top: 0; }
+details.provenance > .meta { padding: 2px 20px; }
+#evidence { padding: 8px 20px; background: #ffffff; }
+#evidence .ev { font-size: 12px; color: #334155; padding: 2px 0; }
+#evidence .src { display: inline-block; min-width: 92px; font-weight: 600; color: #0f172a; }
+#evidence .line { color: #166534; }
+#evidence .absent { color: #64748b; font-style: italic; }
+.legend { padding: 6px 20px; font-size: 12px; color: #475569; max-width: 105ch; }
+/* The view controls live in a control bar (Esc hint + Reset view) — the filter chips that
+   shared it were cut 2026-08-18. */
+#toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+           padding: 4px 20px 10px; }
+#toolbar .tb-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+                   font-size: 11px; color: #64748b; }
+#reset-view { display: inline-block; padding: 2px 10px; border-radius: 4px;
+              border: 1px solid #cbd5e1; background: #ffffff; font: inherit;
+              font-size: 12px; color: #1f2937; cursor: pointer; }
+main { display: flex; align-items: flex-start; gap: 0; }
+#canvas { flex: 1 1 auto; overflow: hidden; padding: 8px 0 24px 8px; }
+#facts { flex: 0 0 340px; background: #ffffff; border-left: 1px solid #cbd5e1;
+         padding: 14px 16px; position: sticky; top: 0; max-height: 100vh;
+         overflow: auto; font-size: 13px; }
+#facts h2 { font-size: 14px; margin-bottom: 8px; }
+#facts .hint { color: #64748b; font-style: italic; }
+#facts table { border-collapse: collapse; width: 100%; }
+#facts td { padding: 3px 6px 3px 0; vertical-align: top; border-bottom: 1px solid #f1f5f9; }
+#facts td:first-child { color: #475569; white-space: nowrap; width: 40%; }
+#facts .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600;
+                font-size: 11px; }
+#facts .badge.warn { color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; }
+#facts .badge.bad { color: #b91c1c; background: #fef2f2; border: 1px solid #fca5a5; }
+#facts h3 { font-size: 12px; color: #475569; margin: 12px 0 4px; }
+#facts ul { margin: 4px 0 8px; padding: 0; list-style: none; }
+#facts li { display: flex; gap: 4px; padding: 1px 0; }
+#facts .mut { color: #64748b; flex: none; }
+#facts .linklike { padding: 0; border: 0; background: none; font: inherit; color: #1d4ed8;
+                   text-align: left; text-decoration: underline; cursor: pointer; }
+#facts li .linklike { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                      white-space: nowrap; }
+/* The svg is a fixed window onto the graph: the JS pans and zooms the viewBox inside it,
+   so the element never resizes and #canvas never scrolls. Gestures are claimed here and
+   nowhere else — the page itself keeps its native scrolling and pinch-zoom. */
+/* The canvas takes the height that is actually there, rather than the height the graph's own
+   shape implies. It used to derive height from width via `aspect-ratio: var(--ar-*)`, which
+   locked the window to the graph's 4.14:1 ribbon: measured 288-303px tall while this cap
+   already permitted 740, i.e. a letterbox slot using ~40% of the screen. Everything inside
+   behaved correctly and the window was the problem — zooming in meant peering through the
+   slot (KG 2026-07-31, after three fixes that each corrected the contents instead).
+   The 160px is the chrome that remains after the legend and footer folded into Provenance;
+   subtracting it keeps the page from scrolling and stays honest if the chrome changes. */
+#canvas svg { display: block; width: 100%; height: calc(100vh - 160px);
+              touch-action: none; cursor: grab; }
+#canvas svg.grabbing, #canvas svg.grabbing .node { cursor: grabbing; }
+.node rect.box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2;
+                 transition: stroke-width 140ms ease; }
+/* These stay the mid tones. A critical card's stroke and its SPOF badge are both #b91c1c and
+   answer two different questions, which is real — but the fix is not here. Tried darkening the
+   scale to #7f1d1d / #78350f so severity and property separate by value: maroon and dark brown
+   are much harder to tell from each other than red and amber are, so it bought a severity/
+   property split by breaking the critical/high one, which is the more important reading.
+   Measured 2026-07-29; see the badge note below for where this actually has to be fixed. */
+.node.critical rect.box { stroke: #b91c1c; }
+.node.high rect.box { stroke: #b45309; }
+.node.process rect.box { fill: #f0fdfa; stroke: #0f766e; }
+/* Tints stay light enough that the #64748b sub line clears WCAG AA on top of them. */
+.node.activity rect.box { fill: #fbfaff; stroke: #6d28d9; }
+/* Variant B's aggregate consumer card: process teal, with two offset sheets behind it as
+   the "stack of N" affordance. The sheets are not `box`, so the selection ring's weight
+   bump touches only the front card. */
+.node.process_group rect.box { fill: #f0fdfa; stroke: #0f766e; }
+.node.process_group .stack { fill: #f0fdfa; stroke: #0f766e; stroke-width: 1.2; }
+.node.process_group .stack.s1 { opacity: .5; }
+.node.process_group .stack.s2 { opacity: .25; }
+/* The fold (aufklappen): folded consumer cards ship in the SVG but exist on screen only
+   while the active lens keeps them. body.unfolded is derived in applyLens from the same
+   keep set that dims — one engine, presentation-only here. The svg's two aspect ratios
+   come from inline --ar-* vars (Python-computed); pages without folded content set none,
+   the var() is then invalid and the attribute-intrinsic ratio applies. */
+.node.folded, .edge.to-folded { display: none; }
+/* The band opened WHOLE through 2026-07-30 — kept cards lit, the rest ghosted at
+   .12, the asset block's own grammar — because per-card visibility was tried
+   first and rejected in KG's second live review: a sparse keep left two cards
+   floating at their slots in the band's fixed grid, nothing around them, which
+   reads as random placement. KG reversed that 2026-07-31: the band's left column
+   sits under the "BIA activities" header, so the ghosted rows read as clutter
+   spilling out of a section they have nothing to do with — worse than the
+   floating-card cost, which per-card visibility brings back and which KG now
+   accepts as the lesser of the two. */
+body.unfolded .node.folded, body.unfolded .edge.to-folded { display: inline; }
+body.unfolded .node.folded.dim { display: none; }
+body.unfolded .edge.to-folded.dim { display: none; }
+/* An open stack has no sheets behind it — the cards are out in the band. */
+body.unfolded .node.process_group .stack { display: none; }
+/* The --ar-* pair is no longer an element aspect — it stays as Python's record of the content
+   extent, which homeView() reads to keep the whole graph on screen at rest and repack()
+   rewrites when the band opens. Binding it to `aspect-ratio` here is what starved the canvas
+   of height; the vars themselves are still load-bearing. */
+.node.unmodeled rect.box { stroke: #b91c1c; stroke-dasharray: 5 3; }
+/* The axis label, on the canvas where the reader is actually looking — the legend prose said
+   this and it did not stick. Recessive page ink, never a status colour (colour is already
+   spoken for), and inert: a press on a header is a press on the background. It rides inside
+   the svg, so it pans and zooms with the column it names. */
+.col-head { fill: #475569; font-size: 11px; font-weight: 600; pointer-events: none; }
+.node text { font-size: 12px; fill: #1f2937; }
+.node text.name { font-weight: 600; font-size: 13px; }
+/* The sub line stays recessive at every criticality. It used to be red on a critical card and
+   amber on a high one, which made the id — a lookup key — the loudest thing on the card while
+   the name it belongs to was the truncated one, so the card read id-first. Criticality is not
+   lost: the box stroke already carries it in colour and the sub line still ends in the literal
+   word, which is the carrier that survives a colour-blind reader anyway. #64748b on the #ffffff
+   box is 4.76:1, the same ink standard assets already used. */
+.node text.sub { fill: #64748b; font-size: 11px; }
+/* Property badges borrow criticality's channel, and that is the open one. The card has exactly
+   two channels and both are already spoken for by name: colour carries criticality, weight
+   carries selection (see .node.focused below). So a property flag has nowhere of its own to
+   live and lands in colour, where #b91c1c means "critical" on the stroke and "SPOF" here.
+   Hue-swapping does not fix it — the three property badges are three different hues, so
+   collapsing them onto one property colour just merges SPOF into PP4. The fix is a channel the
+   card does not have yet: a pill behind each badge, which needs a per-badge rect and therefore
+   a text-width estimate in Python with no font metrics available. That is a layout change, not
+   a colour one. Left deliberately; do not solve it in CSS. */
+.node tspan.b-spof, .node text.b-spof { fill: #b91c1c; font-weight: 700; font-size: 10px; }
+.node tspan.b-owner { fill: #b45309; font-weight: 700; font-size: 10px; }
+.node tspan.b-pp4 { fill: #6d28d9; font-weight: 700; font-size: 10px; }
+.node tspan.b-flags { fill: #475569; font-size: 10px; }
+.node { cursor: pointer; transition: opacity 140ms ease; }
+/* Keyboard-focus ring, pinned rather than left to the UA default. Distinct from the
+   .focused lens ring below: this marks where Tab is, that marks what is selected. */
+.node:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+/* Selection reads as weight, not colour — colour is already the criticality carrier. The
+   pulse is the deep-link arrival marker: it says "this is the node you asked for", swells
+   twice and settles on the ring weight. Decoration, so reduced motion drops it. */
+.node.focused rect.box { stroke-width: 3; }
+@keyframes node-pulse { 0%, 100% { stroke-width: 3; } 50% { stroke-width: 6.5; } }
+.node.pulse rect.box { animation: node-pulse 620ms ease-in-out 2; }
+/* Resting opacity stays .85, but the measurement behind that is spent. Tried .45 to calm the
+   base-view spray (~100 edges, none individually traceable, crossing the empty lower canvas):
+   it did calm it, and it also flattened every lens, where a kept edge had to read as
+   clearly surviving against the .12 dimmed field — .85/.12 is a 7x step, .45/.12 only 3.75x.
+   Measured 2026-07-29. Task 1 (2026-07-31) invalidated that comparison: `.edge.dim` hides
+   outright, so no lens leaves a dimmed field for a kept edge to survive against — a
+   lens now draws zero dimmed edges. The value is unchanged because nothing has argued it
+   down since, not because that experiment still holds. Reopening base-view density means
+   re-running .45 against what a lens actually leaves now — kept edges on bare canvas — not
+   against .12. The spray itself is still a routing symptom (every edge must cross the empty
+   canvas to reach the process column), so it belongs to the layout redesign, not to an
+   opacity knob. */
+.edge { fill: none; stroke: #94a3b8; stroke-width: 1.5; opacity: .85;
+        transition: opacity 140ms ease, stroke-width 140ms ease; }
+.edge.consumes { stroke: #0f766e; stroke-dasharray: 5 3; }
+.edge.activity_dep { stroke: #6d28d9; stroke-dasharray: 2 3; }
+.edge.hot { stroke-width: 2.5; opacity: 1; }
+/* One grammar, three presentations. .dim means "outside the keep set": what the reader can
+   act on stays and ghosts (a card keeps its column position and its click target), what they
+   cannot act on goes (an edge has no click handler, and a folded card's slot in an invisible
+   grid is not information). */
+.dim { opacity: .12; }
+.edge.dim { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+/* A phone cannot afford a fixed 340px sidebar next to the canvas — below the breakpoint
+   the panel goes full width underneath it instead of squeezing the graph to a strip. */
+@media (max-width: 720px) {
+  #facts { flex: 1 1 100%; border-left: 0; border-top: 1px solid #cbd5e1;
+           position: static; max-height: none; }
+  main { flex-wrap: wrap; }
+}

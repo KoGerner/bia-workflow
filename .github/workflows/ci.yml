@@ -1,0 +1,30 @@
+name: tests
+
+# CI proves the suite runs for someone who does not have the knowledge base. That is the whole
+# job: no secrets, no deploy, no publish.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The journeys live in design/, a submodule. Without this the suite does not collect.
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the suite against the fixture corpus
+        # BIA_WORKFLOW_DATA_DIR is not optional: one test reads it directly to prove both
+        # static page builders follow the same knob.
+        run: BIA_WORKFLOW_DATA_DIR=$PWD/tests/fixtures python -m pytest -q -p no:cacheprovider

@@ -1,0 +1,6 @@
+.venv/
+data/*
+!data/chunks.json
+!data/index.json
+__pycache__/
+*.pyc

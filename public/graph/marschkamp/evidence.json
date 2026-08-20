@@ -1,0 +1,88 @@
+{
+  "register": {
+    "sha": "ccdfec45",
+    "written_at": "2026-08-18T10:54:26+00:00",
+    "human_line": "\u2713 Saved and checked: the register on file is byte-identical to the approved field update.",
+    "second_opinion": null
+  },
+  "amendments": [
+    {
+      "activity": "Slaughter Process",
+      "fields": {
+        "owner": {
+          "from": "Olga Milevska",
+          "to": "Torsten Ahlgrim"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Restore original owner after erroneous metadata change",
+      "at": "2026-07-31T10:59:29+00:00"
+    },
+    {
+      "activity": "Slaughter Process",
+      "fields": {
+        "owner": {
+          "from": "Torsten Ahlgrim",
+          "to": "Thorsten Ahlgrim"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Correct spelling of owner name from Torsten to Thorsten",
+      "at": "2026-07-31T14:26:08+00:00"
+    },
+    {
+      "activity": "Cutting / deboning",
+      "fields": {
+        "owner": {
+          "from": "Petra Louven",
+          "to": "Konstantin Gerner"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Owner reassignment requested",
+      "at": "2026-08-03T11:33:10+00:00"
+    },
+    {
+      "activity": "Cutting / deboning",
+      "fields": {
+        "owner": {
+          "from": "Konstantin Gerner",
+          "to": "Konstantin Gerner"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Owner reassignment requested",
+      "at": "2026-08-03T17:02:16+00:00"
+    },
+    {
+      "activity": "Cutting / deboning",
+      "fields": {
+        "owner": {
+          "from": "Konstantin Gerner",
+          "to": "Petra Louven"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Revert the 2026-08-03 reassignment: Petra Louven is the accountable owner, matching the pending 10 Aug read-back and the activity's evidence base",
+      "at": "2026-08-04T09:20:44+00:00"
+    },
+    {
+      "activity": "Cutting / deboning",
+      "fields": {
+        "owner": {
+          "from": "Franz Schubert",
+          "to": "Petra Louven"
+        }
+      },
+      "approved_by": "Konstantin Gerner",
+      "reason": "Operator restore of output/ from _archive-marschkamp-output-pre-beta-2026-08-10 after the 2026-08-10 pre-beta room reset; the archived record carried Franz Schubert, corrected on restore to match the approved 2026-08-04 revert. Status line left PROVISIONAL unchanged.",
+      "at": "2026-08-12T08:33:25+00:00"
+    }
+  ],
+  "record": {
+    "sha": "d05974f7",
+    "written_at": "2026-08-18T11:03:24+00:00",
+    "human_line": "\u2713 Saved and checked: the file is byte-identical to the referee-validated record.",
+    "second_opinion": "\u26a0 Second opinion: The activity 'Slaughter process (stunning \u2192 dressing)' states an MTPD of 24 h, but the dependency UV-CO2-01 imposes a tighter clock of \u2248 8 h on the schlachtung department without the record naming that clock as the binding constraint."
+  }
+}

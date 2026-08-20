@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status — BIA Workflow</title>
+<meta name="description" content="Where the BIA Workflow stands: readiness score, what is enforced, what has been seen on a live run, and what is waiting on the owner.">
+<!--
+  Hand-written, same reasoning as changelog.html: this page changes on every scoring session and
+  a builder would put a publish round between the edit and the reader. Not yet served — nginx on
+  agent.ai4bcm.org has no catch-all, so a NEW path needs deploy/nginx-agent-ai4bcm.conf plus a
+  root round. Until the owner asks for that, this file is opened directly.
+
+  Visual system inherited verbatim from changelog.html (Ditto reference, owner-supplied
+  2026-08-20): parchment canvas, India Ink type, pill shapes, no shadows, no gradients, light
+  theme only. The one addition is the status palette, and it obeys that page's standing rule —
+  COLOUR GOES ON A FILL, NEVER ON TEXT. India Ink on Highlight Green measures 3.32:1, which is
+  why green carries white type here and amber carries ink.
+
+  Every number on this page has the command that produces it in the footer. A figure with no
+  command is not allowed on here: the whole point of the readiness discipline is that a score
+  with no evidence line is not a score, and this page is the score in a readable shape.
+
+  The percentages are NOT feature progress. Every item in that table is already written, tested
+  and deployed. The number is confidence that the behaviour happens on a live turn — which is
+  the only thing separating 6 from 7, and which nothing but a driven run can raise.
+-->
+<style>
+:root{
+  --parchment:#f7f5f3; --ink:#000; --charcoal:#222; --graphite:#6a6559;
+  --bone:#fff; --linen:#dcd8cf;
+  /* status fills. Contrast checked against the type each one carries: white on green 6.0:1,
+     ink on amber 10.4:1, white on clay 6.4:1, ink on linen 16.1:1. */
+  --green:#3e6b15; --amber:#e8b923; --clay:#a32e21;
+  --sans:Inter,"GT Walsheim",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --shell:1200px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--parchment);color:var(--ink);
+  font:400 18px/1.43 var(--sans);letter-spacing:-.22px;-webkit-text-size-adjust:100%}
+.shell{max-width:var(--shell);margin:0 auto;padding:44px 24px 72px}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:16px;
+  padding-bottom:28px;border-bottom:1px solid var(--linen)}
+.mark{font-weight:700;font-size:16px;letter-spacing:-.16px;margin-right:auto}
+.mark a{color:var(--ink);text-decoration:none}
+.ghost{color:var(--ink);font-size:16px;text-decoration:none;border-bottom:1px solid var(--linen)}
+.ghost:hover{border-bottom-color:var(--ink)}
+
+h1{font-weight:700;font-size:clamp(3rem,1.4rem + 6.2vw,6.75rem);line-height:.95;
+  letter-spacing:-.04em;margin:44px 0 0}
+.stamp{font-size:13px;line-height:1.43;letter-spacing:.1px;text-transform:uppercase;
+  color:var(--graphite);margin:18px 0 0}
+h2{font-size:13px;line-height:1.43;letter-spacing:.1px;text-transform:uppercase;
+  color:var(--graphite);font-weight:400;margin:44px 0 12px;
+  padding-top:20px;border-top:1px solid var(--linen)}
+p{margin:0 0 14px;max-width:76ch}
+.lead{font-size:22px;line-height:1.34;letter-spacing:-.3px;max-width:60ch;margin-top:22px}
+
+/* ── scale ───────────────────────────────────────────────────────────── */
+.scale{margin:0;padding:0;list-style:none}
+.scale li{display:flex;gap:14px;padding:7px 0;border-bottom:1px solid var(--linen);max-width:76ch}
+.scale .n{min-width:34px;font-weight:700}
+.scale .here{font-weight:700}
+.scale .here .n::after{content:" ←"}
+
+/* ── status table ────────────────────────────────────────────────────── */
+table{border-collapse:collapse;width:100%;margin:0}
+th{text-align:left;font-size:13px;letter-spacing:.1px;text-transform:uppercase;
+  color:var(--graphite);font-weight:400;padding:0 12px 8px 0;border-bottom:1px solid var(--linen)}
+td{padding:14px 12px 14px 0;border-bottom:1px solid var(--linen);vertical-align:top;
+  font-size:16px;line-height:1.38}
+td.item{font-weight:700;white-space:nowrap}
+td.rem{color:var(--charcoal)}
+.bar{position:relative;width:120px;height:26px;border-radius:9999px;
+  background:var(--linen);overflow:hidden}
+.bar span{position:absolute;inset:0 auto 0 0;display:block}
+.bar b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;letter-spacing:.1px}
+.f-green span{background:var(--green)} .f-green b{color:var(--bone)}
+.f-amber span{background:var(--amber)} .f-amber b{color:var(--ink)}
+.f-clay  span{background:var(--clay)}  .f-clay  b{color:var(--bone)}
+
+.pill{display:inline-block;border-radius:9999px;padding:3px 11px;
+  font-size:13px;font-weight:700;letter-spacing:.1px;text-transform:uppercase;white-space:nowrap}
+.p-green{background:var(--green);color:var(--bone)}
+.p-amber{background:var(--amber);color:var(--ink)}
+.p-clay{background:var(--clay);color:var(--bone)}
+.p-linen{background:var(--linen);color:var(--ink)}
+
+/* ── two-column facts ────────────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0 36px}
+.facts{margin:0;padding:0;list-style:none}
+.facts li{display:flex;gap:12px;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid var(--linen)}
+.facts .lab{color:var(--graphite);margin-right:auto;font-size:16px}
+.facts .val{font-weight:700;white-space:nowrap;font-size:16px}
+
+figure{margin:0}
+svg{display:block;width:100%;height:auto}
+
+footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--linen);
+  font-size:13px;line-height:1.6;letter-spacing:.1px;color:var(--graphite)}
+footer code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--charcoal)}
+a:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+@media(max-width:860px){
+  td{font-size:15px}
+  .bar{width:92px}
+}
+</style>
+
+<div class="shell">
+
+  <div class="top">
+    <p class="mark"><a href="/demo/kb/">BIA Workflow</a></p>
+    <a class="ghost" href="/changelog">Release notes</a>
+    <a class="ghost" href="/demo/bia-workflow-guide/">Manager&rsquo;s guide</a>
+  </div>
+
+  <h1>6<span style="color:var(--graphite)">/10</span></h1>
+  <p class="stamp">Readiness &middot; 2026-08-20 10:13 UTC &middot; shipped to two testers</p>
+
+  <p class="lead">The question the score answers is one thing only: can a BCM manager use this to
+  produce a BIA someone would sign?</p>
+
+  <h2>The scale, and where 6 sits</h2>
+  <ul class="scale">
+    <li><span class="n">1&ndash;3</span><span>Prototype. Cannot complete a BIA end to end.</span></li>
+    <li><span class="n">4&ndash;5</span><span>Completes a BIA, but an expert must sit beside every stage and the output needs rework before anyone would trust it.</span></li>
+    <li class="here"><span class="n">6</span><span>Completes end to end. Mechanical failures are caught, the output is presentable, a supervisor is still required for method judgement, and known correctness holes exist.</span></li>
+    <li><span class="n">7</span><span>An unsupervised manager can run one BIA on one company and trust the result.</span></li>
+    <li><span class="n">8</span><span>Several managers, several BIAs in parallel, no cross-contamination. Evidence quality enforced rather than assumed.</span></li>
+    <li><span class="n">9&ndash;10</span><span>Several companies, real data, a third-party audit passes. Onboarding is a document, not a person.</span></li>
+  </ul>
+
+  <h2>Enforced &mdash; and how much of it has been seen</h2>
+  <p>Every row below is already written, tested and deployed. The percentage is not progress
+  toward building it. It is confidence that the behaviour actually happens on a live turn, which
+  is the only thing that separates 6 from 7. Between <b>2026-08-19T16:11:09Z</b> and
+  <b>2026-08-20T08:06:26Z</b> there was not one <code>next_step</code> call, so nothing built in
+  that window had ever been exercised.</p>
+
+  <table>
+    <thead><tr><th>Item</th><th>Confidence</th><th>Status</th><th>What the remainder is</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="item">H4<br><span style="font-weight:400;color:var(--graphite)">speaks first</span></td>
+        <td><div class="bar f-green"><span style="width:100%"></span><b>100%</b></div></td>
+        <td><span class="pill p-green">Resolved</span></td>
+        <td class="rem">Retired, not built. Removed from the 8/10 list by owner ruling.</td>
+      </tr>
+      <tr>
+        <td class="item">W11(b)<br><span style="font-weight:400;color:var(--graphite)">turns end answerable</span></td>
+        <td><div class="bar f-green"><span style="width:90%"></span><b>90%</b></div></td>
+        <td><span class="pill p-green">Both surfaces</span></td>
+        <td class="rem">Buzz <b>17 of 17</b>, Teams <b>8 of 10</b>. The two misses are a transition turn and a refusal turn.</td>
+      </tr>
+      <tr>
+        <td class="item">W4<br><span style="font-weight:400;color:var(--graphite)">proposes from the register</span></td>
+        <td><div class="bar f-green"><span style="width:85%"></span><b>85%</b></div></td>
+        <td><span class="pill p-green">Seen rejecting</span></td>
+        <td class="rem">Fired live twice as <code>stage_incomplete</code>, then cleared. Now also fires at the save, so the read informs the draft. The unprompted proposal is still the weak half.</td>
+      </tr>
+      <tr>
+        <td class="item">W9<br><span style="font-weight:400;color:var(--graphite)">cross-department</span></td>
+        <td><div class="bar f-green"><span style="width:80%"></span><b>80%</b></div></td>
+        <td><span class="pill p-green">Firing</span></td>
+        <td class="rem">17 rejections grouped to 5. Never <i>signed</i> &mdash; that waits on the Slaughter merge, then Hans.</td>
+      </tr>
+      <tr>
+        <td class="item">W12<br><span style="font-weight:400;color:var(--graphite)">options before free text</span></td>
+        <td><div class="bar f-green"><span style="width:80%"></span><b>80%</b></div></td>
+        <td><span class="pill p-green">First evidence</span></td>
+        <td class="rem">Offered <i>1 - Use Slaughter &middot; 2 - Use Cutting</i> from the company record instead of asking for free text. One instance.</td>
+      </tr>
+      <tr>
+        <td class="item">H6<br><span style="font-weight:400;color:var(--graphite)">turn with nothing to do</span></td>
+        <td><div class="bar f-amber"><span style="width:75%"></span><b>75%</b></div></td>
+        <td><span class="pill p-amber">Half met</span></td>
+        <td class="rem">Buzz met. Teams has a number for the first time, but from a reconstructed transcript &mdash; directional, not auditable. The pull lane still needs Entra consent.</td>
+      </tr>
+      <tr>
+        <td class="item">W7<br><span style="font-weight:400;color:var(--graphite)">intelligent questions</span></td>
+        <td><div class="bar f-clay"><span style="width:70%"></span><b>70%</b></div></td>
+        <td><span class="pill p-clay">Not yet</span></td>
+        <td class="rem">Stage 2 was reached, so it stopped being unobservable. Its first question is the method's standard one; suggesting what the interviewee did not name has still never been seen.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Where the driven run actually is</h2>
+  <figure>
+    <svg viewBox="0 0 1160 300" role="img" aria-label="The five BIA stages. Stage 1 opened and its read gate fired; the run is parked at stage 1's approval gate. Stages 2 to 5 have not been reached.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="#6a6559"/>
+        </marker>
+      </defs>
+      <g font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="15">
+
+        <!-- stage 1: reached -->
+        <rect x="8" y="58" width="200" height="86" rx="18" fill="#3e6b15"/>
+        <text x="26" y="88" fill="#fff" font-weight="700" font-size="16">Stage 1 &middot; Scope</text>
+        <text x="26" y="110" fill="#fff" font-size="13">read gate fired 08:07:13Z</text>
+        <text x="26" y="129" fill="#fff" font-size="13">card + numbered close</text>
+
+        <!-- the gate the run is parked at -->
+        <line x1="212" y1="101" x2="252" y2="101" stroke="#6a6559" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="258" y="52" width="176" height="98" rx="18" fill="#3e6b15"/>
+        <text x="276" y="82" fill="#fff" font-weight="700" font-size="16">Approval gate</text>
+        <text x="276" y="104" fill="#fff" font-size="13">1 &mdash; yes &middot; 2 &mdash; amend</text>
+        <text x="276" y="123" fill="#fff" font-size="13" font-weight="700">cleared 09:36:38Z</text>
+        <text x="276" y="141" fill="#fff" font-size="13">read gate + contract fired</text>
+
+        <!-- unreached stages -->
+        <line x1="438" y1="101" x2="478" y2="101" stroke="#6a6559" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="484" y="66" width="152" height="70" rx="18" fill="#e8b923"/>
+        <text x="500" y="96" fill="#000" font-weight="700" font-size="16">Stage 2</text>
+        <text x="500" y="117" fill="#000" font-size="13">opened &middot; W7 unseen</text>
+
+        <line x1="640" y1="101" x2="672" y2="101" stroke="#6a6559" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="678" y="66" width="140" height="70" rx="18" fill="#dcd8cf"/>
+        <text x="694" y="96" fill="#000" font-weight="700" font-size="16">Stage 3</text>
+        <text x="694" y="117" fill="#6a6559" font-size="13">analysis</text>
+
+        <line x1="822" y1="101" x2="854" y2="101" stroke="#6a6559" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="860" y="66" width="152" height="70" rx="18" fill="#dcd8cf"/>
+        <text x="876" y="96" fill="#000" font-weight="700" font-size="16">Stage 4</text>
+        <text x="876" y="117" fill="#6a6559" font-size="13">draft &middot; H1 card</text>
+
+        <line x1="1016" y1="101" x2="1042" y2="101" stroke="#6a6559" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="1048" y="66" width="104" height="70" rx="18" fill="#dcd8cf"/>
+        <text x="1064" y="96" fill="#000" font-weight="700" font-size="16">Stage 5</text>
+        <text x="1064" y="117" fill="#6a6559" font-size="13">solution</text>
+
+        <!-- legend -->
+        <rect x="8" y="196" width="14" height="14" rx="7" fill="#3e6b15"/>
+        <text x="30" y="208" fill="#222" font-size="14">reached and observed</text>
+        <rect x="212" y="196" width="14" height="14" rx="7" fill="#e8b923"/>
+        <text x="234" y="208" fill="#222" font-size="14">waiting on a human</text>
+        <rect x="404" y="196" width="14" height="14" rx="7" fill="#dcd8cf"/>
+        <text x="426" y="208" fill="#222" font-size="14">never reached on a driven run</text>
+
+        <text x="8" y="252" fill="#6a6559" font-size="14">Everything right of the gate is enforced, tested and deployed. None of it has been seen on a live run.</text>
+        <text x="8" y="276" fill="#6a6559" font-size="14">Stage 4 is where H1&rsquo;s quote-beside-score card would first be visible, which is why the run was asked to reach it.</text>
+      </g>
+    </svg>
+  </figure>
+
+  <h2>Code quality</h2>
+  <div class="grid">
+    <ul class="facts">
+      <li><span class="lab">Test suite</span><span class="val">584 passed</span></li>
+      <li><span class="lab">Added today, each red first</span><span class="val">11</span></li>
+      <li><span class="lab">Protocol characters</span><span class="val">2,181</span></li>
+      <li><span class="lab">Payload sum &middot; cap 61,000</span><span class="val">60,881</span></li>
+    </ul>
+    <ul class="facts">
+      <li><span class="lab">Payload max &middot; cap 14,500</span><span class="val">14,370</span></li>
+      <li><span class="lab">Headroom on the binding stage</span><span class="val">130</span></li>
+      <li><span class="lab">Deploy proof</span><span class="val">file diff, not sha</span></li>
+      <li><span class="lab">Defects found by shipping</span><span class="val">4</span></li>
+    </ul>
+  </div>
+  <p style="margin-top:14px">The two instrument defects matter more than the count suggests. Both
+  were <b>false failures</b> &mdash; the grader marking correct behaviour down &mdash; and both came
+  from encoding how a menu is <i>drawn</i> rather than what it <i>is</i>. That is the third
+  occurrence of the same mistake in this codebase. On byte-identical input the correction moved
+  the recorded figures from <b>14 to 23</b> of 43 relay turns and from <b>86 to 97</b> of 225 Teams
+  turns, so every open-endings number recorded before today described the tool, not the agent.</p>
+
+  <h2>BCM quality</h2>
+  <p>What the referee refuses to let through, all of it deterministic and none of it advisory:</p>
+  <ul class="facts" style="max-width:76ch">
+    <li><span class="lab">Impact grid &rarr; MTPD, RTO &lt; MTPD, monotonic ratings</span><span class="val"><span class="pill p-green">Enforced</span></span></li>
+    <li><span class="lab">A provider returning at or after the MTPD blocks the save</span><span class="val"><span class="pill p-green">Enforced</span></span></li>
+    <li><span class="lab">One quote under several scored categories needs a named human</span><span class="val"><span class="pill p-green">Enforced</span></span></li>
+    <li><span class="lab">Stage 1 cannot proceed until the method and register are read</span><span class="val"><span class="pill p-green">Enforced</span></span></li>
+    <li><span class="lab">Every stage ends on numbered moves</span><span class="val"><span class="pill p-green">Enforced</span></span></li>
+    <li><span class="lab">Is the quote <i>about</i> the category it scores</span><span class="val"><span class="pill p-amber">Human, at sign-off</span></span></li>
+    <li><span class="lab">A write into another BIA&rsquo;s folder</span><span class="val"><span class="pill p-clay">Still passes</span></span></li>
+  </ul>
+  <p style="margin-top:14px">The live Marschkamp record is <b>not signable</b>: validation returns
+  <code>pass false</code> with five rejections &mdash; three grouped provider findings and two
+  cross-department ones. The blocker is a double-counted Slaughter process sitting in the record
+  under two different MTPDs. Hans, the seat that signs, has said he will accept the two
+  cross-department findings once that merge lands, one name on each.</p>
+
+  <h2>Waiting on the owner</h2>
+  <p>None of these can be done by an agent, and each one is the only thing standing behind what it
+  blocks.</p>
+  <ul class="facts" style="max-width:76ch">
+    <li><span class="lab">Reach stage 4 on a driven run</span><span class="val"><span class="pill p-amber">Unblocks W7 and H1&rsquo;s card</span></span></li>
+    <li><span class="lab">Merge the Slaughter double-count</span><span class="val"><span class="pill p-amber">Unblocks every live referee number</span></span></li>
+    <li><span class="lab">Entra consent for the transcript pull</span><span class="val"><span class="pill p-amber">Unblocks H6&rsquo;s Teams half</span></span></li>
+    <li><span class="lab">Paste Part D into both Copilot agents</span><span class="val"><span class="pill p-amber">Aligns the customer surface</span></span></li>
+  </ul>
+
+  <footer>
+    <p style="margin:0 0 10px">Every figure on this page, and the command that produces it:</p>
+    <p style="margin:0 0 4px"><code>BIA_WORKFLOW_DATA_DIR=$PWD/data .venv/bin/python -m pytest -q -p no:cacheprovider</code> &rarr; 573 passed</p>
+    <p style="margin:0 0 4px"><code>voice_check.py --payload</code> &rarr; 2181 / 60881 / 14370</p>
+    <p style="margin:0 0 4px"><code>voice_check.py --relay 537dec07-&hellip; --since 1787159220</code> &rarr; open_endings 17 of 17</p>
+    <p style="margin:0 0 4px"><code>voice_check.py --transcripts /srv/addendum/usage</code> &rarr; 97 of 225</p>
+    <p style="margin:0 0 4px"><code>grep next_step /srv/addendum/usage/calls-2026-W34.jsonl</code> &rarr; read gate and run state</p>
+    <p style="margin:10px 0 0">Scale, holes and score log: <code>docs/readiness.md</code>. Not served
+    yet &mdash; a new path on agent.ai4bcm.org needs an nginx change and a root round.</p>
+  </footer>
+
+</div>

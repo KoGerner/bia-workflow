@@ -1,0 +1,13 @@
+# Pinned: 1.28.0 is the verified version supporting @mcp.prompt, @mcp.resource,
+# and ctx.elicit (the journey-layer primitives). Bump deliberately, re-test before changing.
+mcp==1.28.0
+pytest>=8.0
+# Journey definitions are human-editable YAML (single source of truth).
+pyyaml==6.0.2
+# Imported directly, not just pulled in by mcp: addendum_tools/graph_files/pull_transcripts
+# build httpx clients, and server.py builds its bearer-token middleware on starlette and
+# serves with uvicorn. They arrive transitively today, so a different mcp pin breaks the
+# import with no line here to explain why.
+httpx>=0.28
+starlette>=1.6
+uvicorn>=0.52

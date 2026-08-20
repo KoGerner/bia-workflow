@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Sign in — BIA-Workflow</title>
+<!--
+  Styled gate for the BIA-Workflow demo. Public page; replaces the browser's unstyleable
+  basic-auth dialog (KG, 2026-07-24).
+
+  HOW THE GATE ACTUALLY WORKS — the password is never in this file. On submit we SHA-256 what
+  was typed, take the first 16 hex chars, and probe /demo/live-<hash>/. nginx only serves the
+  one directory that exists, so a wrong password gets a 404 and never reaches the agent. The
+  secret is the path, and the server is what enforces it — this is not a client-side check
+  dressed up as security. It is exactly as strong as the old basic-auth password was, which is
+  to say: a front door. The agent's own Copilot URL remains reachable by anyone who has it.
+
+  Consequence to keep in mind: the unguessable path lands in browser history, and the embed
+  page carries <meta name="referrer" content="no-referrer"> so it cannot leak to Microsoft.
+
+  Palette and type come from public/changelog.html, which is the reference implementation of the
+  Ditto system for this estate (KG, 2026-08-20). Read its head comment before changing colour
+  here. The previous source was ai-addendum-chat/public/theme.json — the Chainlit app at /chat/,
+  retired 2026-08-18 — so this page was matching a surface that no longer exists.
+
+  To change the password: mint the new directory name and rename it.
+    python3 -c "import hashlib;print('live-'+hashlib.sha256(b'NEWPW').hexdigest()[:16])"
+
+  Deploy: copy to /var/www/addendum-demo/bia-live/index.html.
+-->
+<style>
+/* Palette and type from /changelog, the reference implementation of the Ditto system
+   (KG, 2026-08-20). Warm parchment, India Ink, one sans, everything pill-shaped, no shadow and
+   no gradient. --accent replaces the old --navy: it holds India Ink now, and a token called
+   "navy" holding #000 is the kind of lie the next editor pays for.
+   --bad stays a real red on purpose. It is the only hue left on the page and it is functional:
+   a failed sign-in has to read as failed before it reads as text. 6.87:1 on parchment. */
+:root{
+  /* Ditto neutrals — parchment canvas, India Ink type. No accent hue anywhere: a link
+     earns its distinction from an underline, not a colour. */
+  --parchment:#f7f5f3; --ink:#000; --charcoal:#222; --graphite:#6a6559;
+  --bone:#fff; --smoke:#e2e2e2; --linen:#dcd8cf;
+  --sans:Inter,"GT Walsheim",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The reference's type scale, verbatim. Tracking is per size and gets harder as the
+     size grows — that negative tracking on display sizes is the system's signature and
+     must not be normalised. */
+  --t-caption:13px;    --lh-caption:1.43; --ls-caption:.1px;
+  --t-body-sm:16px;    --lh-body-sm:1.43; --ls-body-sm:-.16px;
+  --t-body:18px;       --lh-body:1.43;    --ls-body:-.22px;
+  --t-subheading:26px; --lh-subheading:1.2;  --ls-subheading:-.52px;
+  --t-heading-sm:35px; --lh-heading-sm:1.2;  --ls-heading-sm:-.35px;
+  --t-heading:43px;    --lh-heading:1.05;    --ls-heading:-.99px;
+  --t-heading-lg:72px; --lh-heading-lg:1;    --ls-heading-lg:-2.88px;
+  --t-display:108px;   --lh-display:.95;     --ls-display:-4.32px;
+  /* Radii, verbatim: pill for buttons/tags/nav, 12px for cards and images, 28px for
+     inputs and inputs only — it is the highest non-pill radius in the system. */
+  --r-pill:9999px; --r-card:12px; --r-input:28px;
+  --shell:1200px;
+  /* Local aliases onto the system. --bad is the only hue left on the estate and it is
+     functional: a failed sign-in must read as failed before it reads as text. 6.87:1. */
+  --accent:var(--ink);--ground:var(--parchment);--ink-2:var(--charcoal);
+  --line:var(--linen);--muted:var(--graphite);--card:var(--bone);--bad:#9e2b16;
+  --r:var(--r-pill)
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 var(--t-body)/1.5 var(--sans);
+letter-spacing:var(--ls-body);display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ── left: identity, then the form ──────────────────────────────────────── */
+.left{position:relative;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+.brand{position:absolute;top:2.6rem;left:3rem;right:1.5rem;
+display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem 1.6rem}
+/* The wordmark is the only outbound link a sign-in page should carry: a full nav here
+   advertises the app to someone who has not signed in and hands a stranger a menu. */
+.brand b{font-size:var(--t-subheading);font-weight:700;letter-spacing:var(--ls-subheading)}
+.brand b a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--linen)}
+.brand b a:hover{border-bottom-color:var(--ink)}
+.brand span{font-size:var(--t-body-sm);letter-spacing:var(--ls-body-sm);color:var(--ink-2)}
+
+form{width:min(25rem,100%)}
+h1{font-size:var(--t-heading-sm);line-height:var(--lh-heading-sm);font-weight:700;
+text-align:center;letter-spacing:var(--ls-heading-sm);margin:0 0 2rem}
+label{display:block;font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
+text-transform:uppercase;color:var(--muted);margin:0 0 .45rem}
+/* The field border is --muted, not --line. Linen on white is 1.31:1 and WCAG 1.4.11 wants 3:1
+   for a control boundary: a decorative hairline may disappear, the one input on the sign-in page
+   may not. Graphite clears it at 5.8:1. Everywhere else on the estate --line stays linen. */
+/* Reference: inputs take 28px, the highest non-pill radius, and 28px is reserved for them. */
+input{width:100%;padding:.72rem 1.05rem;font:var(--t-body-sm) var(--sans);
+letter-spacing:var(--ls-body-sm);color:var(--ink);background:var(--card);
+border:1px solid var(--muted);border-radius:var(--r-input)}
+/* Reference: focus swaps the border to India Ink at 1.5px — no glow ring. */
+input:focus{outline:none;border:1.5px solid var(--ink)}
+.hint{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);margin:.5rem 0 0}
+.bad{font-size:var(--t-caption);line-height:var(--lh-caption);font-weight:700;color:var(--bad);
+margin:.55rem 0 0;min-height:1.2em}
+button{width:100%;margin:1.35rem 0 0;padding:.78rem 1rem;
+font:700 var(--t-body-sm) var(--sans);letter-spacing:var(--ls-body-sm);
+color:var(--ground);background:var(--accent);border:1px solid var(--accent);
+border-radius:var(--r);cursor:pointer;transition:background .15s,border-color .15s}
+button:hover:not(:disabled){background:var(--ink-2);border-color:var(--ink-2)}
+button:disabled{opacity:.65;cursor:default}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+/* ── right: the panel. One bold shape, bled off the edge. ───────────────── */
+/* The page spends all of its boldness here, so everything else stays quiet. India Ink field,
+   parchment letters — the same inversion the reference uses for its one button. */
+.panel{position:relative;overflow:hidden}
+.panel::before{content:"";position:absolute;inset:.75rem -6rem .75rem 0;
+background:var(--accent);border-radius:2.75rem}
+.panel b{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+color:var(--ground);font:700 clamp(7rem,20vw,19rem)/1 var(--sans);letter-spacing:-.055em;
+white-space:nowrap}
+
+@media(max-width:60rem){
+  body{grid-template-columns:1fr;overflow:auto}
+  .panel{display:none}
+  .brand{position:static;justify-content:center;text-align:center;margin:0 0 2.2rem}
+  .left{flex-direction:column;padding:3rem 1.5rem}
+}
+</style>
+
+<section class="left">
+  <div class="brand">
+    <b><a href="/demo/kb/">BIA-Workflow</a></b>
+    <span>I'm your co-worker in AI for BCM. How can I help?</span>
+  </div>
+
+  <form id="f" autocomplete="off">
+    <h1>Welcome to the BIA-Workflow demo</h1>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" autofocus
+           spellcheck="false" required>
+    <p class="hint">Synthetic demo data only. No real company information. Conversations are recorded and reviewed to improve this workflow.</p>
+    <p class="bad" id="e" role="alert" aria-live="polite"></p>
+    <button id="b" type="submit">Sign in</button>
+  </form>
+</section>
+
+<section class="panel" aria-hidden="true"><b>BCM</b></section>
+
+<script>
+const f = document.getElementById('f'), pw = document.getElementById('pw'),
+      b = document.getElementById('b'), e = document.getElementById('e');
+
+f.addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const value = pw.value.trim();
+  if (!value) return;
+  e.textContent = ''; b.disabled = true; b.textContent = 'Checking…';
+
+  // The password never leaves the browser and is never compared here — it only derives a
+  // path. nginx serving that path (or not) is the actual gate.
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  const hex = [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, '0')).join('');
+  const path = `/demo/live-${hex.slice(0, 16)}/`;
+
+  let ok = false;
+  try { ok = (await fetch(path, { method: 'HEAD' })).ok; } catch {}
+
+  if (ok) { location.replace(path); return; }
+  e.textContent = "That password isn't right.";
+  b.disabled = false; b.textContent = 'Sign in';
+  pw.select();
+});
+</script>

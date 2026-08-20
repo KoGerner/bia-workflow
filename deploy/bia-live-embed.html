@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- LOAD-BEARING: this page lives at an unguessable path, which is the entire gate. Without
+     this, the iframe request would send that path to Microsoft in the Referer header. -->
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>BIA working session — BIA-Workflow</title>
+<!--
+  Authenticated workspace for the Copilot Studio agent "BIA-Workflow (public)" (Web app
+  channel), which reads the marschkamp room. Live since 2026-07-24; repointed from the
+  marschkamp-demo room 2026-08-10, when that copy was archived (one room from here on).
+
+  DESIGN: this is the signed-in state of deploy/bia-live-gate.html and shares its language —
+  linen field, warm parchment ground, one large architectural radius, one sans throughout,
+  almost no decoration. The login's oversized "BCM" becomes an oversized "BIA" washed into the
+  rail. The palette comes from public/changelog.html, the reference implementation of the Ditto
+  system for this estate (KG, 2026-08-20) — read its head comment before changing colour here,
+  and change the gate in the same commit. The previous source was the Chainlit app's theme.json
+  at /chat/, retired 2026-08-18: both pages were matching a surface that no longer exists.
+
+  FOUR THINGS THAT LOOK LIKE OMISSIONS AND ARE DELIBERATE:
+
+  1. The stage list carries NO progress state — no active dot, no "stage 3 of 6". The parent
+     page cannot read the conversation (cross-origin), so any such marker would be invented.
+     The list is a map, not a tracker. Do not add state you cannot observe.
+
+  2. Nothing styles the conversation itself. Bubbles, the composer, the send control and the
+     reactions are Microsoft's, inside a cross-origin frame: no parent CSS reaches them and
+     there is no API to drive them. The shell is all that is ours.
+
+  3. --ms-chrome pulls the iframe up to clip Copilot's own teal title bar, which otherwise
+     repeats the wordmark in a colour that fights the palette. Over-clipping is the safe
+     direction (the message list scrolls, so hidden pixels cost nothing); under-clipping leaves
+     a teal sliver. If Microsoft changes that bar's height, this is the only value to retune.
+
+  4. "Chat blank? Open the assistant directly", in the context header, is LOAD-BEARING — do
+     not tidy it away.
+     Embedded cross-origin, the webchat's directline/botdetails call 401s where it returns 200
+     top-level: Chrome tolerates it and connects, but Firefox with Enhanced Tracking Protection
+     blocks the third-party storage the Direct Line handshake needs and renders a permanently
+     blank frame (measured 2026-07-24). That link opens the same src top-level, where the
+     storage is first-party and it works. It is always visible because it cannot be shown on
+     demand: a cross-origin frame is unreadable from here, and onload fires for the broken
+     state too, so there is no signal to trigger on.
+
+  Deploy: /var/www/addendum-demo/live-<sha256(password)[:16]>/index.html, served by the generic
+  /demo/ alias — no nginx location of its own. The unguessable path IS the gate; the styled
+  login at /demo/bia-live/ hashes what the visitor types and sends them here. The hash must
+  never appear in this file. To change the password, rename the directory —
+    python3 -c "import hashlib;print('live-'+hashlib.sha256(b'NEWPW').hexdigest()[:16])"
+-->
+<style>
+:root{
+  /* Ditto neutrals — parchment canvas, India Ink type. No accent hue anywhere: a link
+     earns its distinction from an underline, not a colour. */
+  --parchment:#f7f5f3; --ink:#000; --charcoal:#222; --graphite:#6a6559;
+  --bone:#fff; --smoke:#e2e2e2; --linen:#dcd8cf;
+  --sans:Inter,"GT Walsheim",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The reference's type scale, verbatim. Tracking is per size and gets harder as the
+     size grows — that negative tracking on display sizes is the system's signature and
+     must not be normalised. */
+  --t-caption:13px;    --lh-caption:1.43; --ls-caption:.1px;
+  --t-body-sm:16px;    --lh-body-sm:1.43; --ls-body-sm:-.16px;
+  --t-body:18px;       --lh-body:1.43;    --ls-body:-.22px;
+  --t-subheading:26px; --lh-subheading:1.2;  --ls-subheading:-.52px;
+  --t-heading-sm:35px; --lh-heading-sm:1.2;  --ls-heading-sm:-.35px;
+  --t-heading:43px;    --lh-heading:1.05;    --ls-heading:-.99px;
+  --t-heading-lg:72px; --lh-heading-lg:1;    --ls-heading-lg:-2.88px;
+  --t-display:108px;   --lh-display:.95;     --ls-display:-4.32px;
+  /* Radii, verbatim: pill for buttons/tags/nav, 12px for cards and images, 28px for
+     inputs and inputs only — it is the highest non-pill radius in the system. */
+  --r-pill:9999px; --r-card:12px; --r-input:28px;
+  --shell:1200px;
+  /* Local aliases onto the system. --on-field-2 is NOT --graphite: graphite measures 4.08:1
+     on linen and fails; #5c584e clears it at 4.99:1. Re-measure if either token moves. */
+  --accent:var(--ink);--bg:var(--parchment);--field:var(--linen);--line:var(--linen);
+  --muted:var(--graphite);--card:var(--bone);--on-field:var(--ink);--on-field-2:#5c584e;
+  --rule-field:rgba(0,0,0,.16);
+  --ms-chrome:56px;--rail:21.5rem;--col:58rem;--arc:2.75rem;--r:6px;--pill:var(--r-pill)
+}
+/* Kept, against the reference's light-only rule, because this page runs inside Teams and a
+   parchment slab in a dark shell is worse than a dark parchment (owner ruling, 2026-08-20).
+   Parchment and ink swap roles; nothing turns blue. */
+@media(prefers-color-scheme:dark){
+  :root{
+  --parchment:#14130f; --ink:#f7f5f3; --charcoal:#d6d2c9; --graphite:#9d968a;
+  --bone:#1e1c17; --smoke:#2a2721; --linen:#34302a;
+  --on-field-2:#a8a094;--rule-field:rgba(255,255,255,.13)}
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 var(--t-body-sm)/1.55 var(--sans);letter-spacing:var(--ls-body-sm);
+-webkit-text-size-adjust:100%;display:grid;grid-template-columns:var(--rail) 1fr;
+height:100dvh;overflow:hidden}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* ══ workflow rail ══════════════════════════════════════════════════════════
+   The login's navy panel, made functional. One large radius on its inside edge
+   is the single architectural curve on the page; everything else is 6px. */
+.rail{position:relative;overflow:hidden;background:var(--field);color:var(--on-field);
+border-radius:0 var(--arc) var(--arc) 0;display:flex;min-height:0}
+/* The login's oversized BCM, continued as BIA. Architecture, not ornament. India Ink at low
+   opacity: on linen a white wash is invisible and a solid one is a billboard. */
+.rail::before{content:"BIA";position:absolute;left:-.055em;bottom:-.16em;z-index:0;
+font:700 10.5rem/.78 var(--sans);letter-spacing:-.055em;color:var(--accent);opacity:.09;
+pointer-events:none;user-select:none}
+.rail-in{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;
+display:flex;flex-direction:column;padding:1.4rem 1.35rem 0}
+
+.wordmark{margin:0 0 .95rem;font-size:var(--t-body);font-weight:700;letter-spacing:var(--ls-body)}
+
+.lab{margin:0 0 .35rem;font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
+text-transform:uppercase;color:var(--on-field-2)}
+
+.prompt{margin:0 0 .45rem;padding:.45rem .55rem;font-size:.8rem;line-height:1.42;
+background:var(--card);border:1px solid var(--rule-field);border-radius:var(--r)}
+/* Small: it labels a one-off convenience, not a primary action. */
+.copy{font:700 .72rem var(--sans);color:var(--bg);background:var(--accent);border:0;
+border-radius:var(--r-pill);padding:.3rem .7rem;cursor:pointer;transition:opacity .15s}
+.copy:hover{opacity:.82}
+.copy[data-done]{filter:none;opacity:.72}
+
+.map{margin:.9rem 0 0;padding:.75rem 0 0;border-top:1px solid var(--rule-field)}
+.map summary{margin:0 0 .45rem;font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
+text-transform:uppercase;color:var(--on-field-2);list-style:none;cursor:default}
+.map summary::-webkit-details-marker{display:none}
+
+/* A map, not a tracker: the numbers are labels, never progress. See note 1 above. */
+.stages{list-style:none;margin:0;padding:0}
+.stages li{display:grid;grid-template-columns:1.7rem 1fr;padding:.26rem 0;
+border-top:1px solid var(--rule-field)}
+.stages li:first-child{border-top:0;padding-top:0}
+.stages .n{font-size:.72rem;font-weight:700;color:var(--accent);
+font-variant-numeric:tabular-nums;padding-top:.05rem}
+/* Explicit: the wrapper span carries --on-field-2, so without this the stage title
+   inherits the muted colour and the hierarchy collapses to weight alone. */
+.stages b{display:block;font-size:.815rem;font-weight:700;line-height:1.28;
+color:var(--on-field)}
+.stages span{display:block;font-size:.745rem;line-height:1.3;color:var(--on-field-2)}
+
+.links{margin:.85rem 0 0;padding:.7rem 0 0;border-top:1px solid var(--rule-field);
+display:flex;flex-direction:column}
+.links a{display:block;padding:.4rem 0;color:var(--on-field);text-decoration:none;
+border-top:1px solid var(--rule-field)}
+.links a:first-child{border-top:0;padding-top:0}
+.links strong{display:block;font-size:.815rem;font-weight:700;color:var(--accent)}
+/* ↗ not → : every one of these opens in a new tab. */
+.links strong::after{content:" ↗";font-weight:400}
+.links span{display:block;font-size:.745rem;line-height:1.3;color:var(--on-field-2)}
+.links a:hover strong{text-decoration:underline}
+
+.note{margin:.85rem 0 0;padding:.65rem 0 0;border-top:1px solid var(--rule-field);
+font-size:.75rem;line-height:1.4;color:var(--on-field-2)}
+/* Reads as document classification: sticks to the foot of the rail so it stays on screen
+   even when the rail scrolls — a classification you can scroll away from isn't one. */
+.classification{position:sticky;bottom:0;margin:auto 0 0;padding:.6rem 0 .95rem;
+background:var(--field);border-top:1px solid var(--rule-field);
+font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
+text-transform:uppercase;color:var(--on-field-2)}
+
+/* ══ workspace ═════════════════════════════════════════════════════════════ */
+/* Left-aligned, not centred: centring pushed the chat into the middle of the workspace
+   and opened a canyon between it and the rail. */
+main{min-width:0;min-height:0;display:flex;flex-direction:column;
+padding:1.6rem 1.75rem 1.75rem}
+.ctx{width:min(var(--col),100%);margin:0;flex:0 0 auto;
+padding:0 0 .8rem;border-bottom:1px solid var(--line);
+display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;
+gap:.35rem 1.25rem}
+.ctx h1{margin:0;font-size:var(--t-subheading);font-weight:700;letter-spacing:var(--ls-subheading)}
+.ctx p{display:flex;flex-wrap:wrap;gap:.25rem .5rem;margin:.4rem 0 0;
+font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
+text-transform:uppercase;color:var(--muted)}
+.ctx i{font-style:normal;color:var(--muted);opacity:.45}
+/* The escape hatch, sitting with the session's own metadata. It names the SYMPTOM first
+   because a blank frame carries no explanation of its own — see note 4. */
+.direct{flex:0 0 auto;margin-top:.3rem;font-size:.775rem;color:var(--muted);
+text-decoration:none;white-space:nowrap}
+.direct::after{content:" ↗"}
+.direct:hover{color:var(--ink);text-decoration:underline}
+
+/* Not a floating card: thin border, small radius, no shadow, aligned to the
+   context header's column and capped so it never reads as an empty white slab. */
+.frame{width:min(var(--col),100%);margin:1.05rem 0 0;flex:1 1 auto;min-height:0;
+max-height:33rem;position:relative;overflow:hidden;background:var(--card);
+border:1px solid var(--line);border-radius:var(--r-card)}
+.frame iframe{position:absolute;left:0;width:100%;
+top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;display:block}
+
+/* ══ narrow: rail stacks above, map collapses, nothing scrolls sideways ════ */
+@media(max-width:60rem){
+  body{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto;min-height:100dvh;
+  overflow:auto}
+  .rail{border-radius:0 0 var(--arc) var(--arc)}
+  .rail::before{display:none}
+  .rail-in{overflow:visible;padding:1.25rem 1.15rem 1.15rem}
+  .map{margin-top:1.3rem;padding-top:1.1rem}
+  .map summary{cursor:pointer;margin-bottom:0}
+  .map summary::after{content:" ▾"}
+  .map[open] summary::after{content:" ▴"}
+  .map[open] .stages{margin-top:.95rem}
+  /* Stacked, the rail no longer scrolls independently — sticky would pin this to the
+     viewport and float it over the chat. It sits in flow instead. */
+  .classification{position:static;margin:1.15rem 0 0;padding-bottom:0}
+  main{padding:1.2rem 1.15rem 1.5rem}
+  .frame{max-height:none;min-height:30rem;margin-top:1rem}
+}
+</style>
+
+<aside class="rail">
+  <div class="rail-in">
+    <p class="wordmark">BIA-Workflow</p>
+
+    <p class="lab">Say this first</p>
+    <p class="prompt" id="p">Start a BIA for marschkamp. Take me through it one stage at a time.</p>
+    <div><button class="copy" id="c" type="button">Copy</button></div>
+
+    <details class="map" id="map" open>
+      <summary>Workflow map</summary>
+      <ol class="stages">
+        <!-- The five traditional-BIA names (KG + Willem, 2026-08-13); 3a is the owner loop,
+             not one of the five. Source: design/run-bia.yaml `name:`. -->
+        <li><span class="n">1</span><span><b>Identification of scope</b>
+          <span>Confirm the department and its activities, approve the guide</span></span></li>
+        <li><span class="n">2</span><span><b>Structured interview</b>
+          <span>Check the write-up against what was said</span></span></li>
+        <li><span class="n">3</span><span><b>Convert to the standardised template</b>
+          <span>Decide what it flags</span></span></li>
+        <li><span class="n">3a</span><span><b>Missing-owner loop</b>
+          <span>Only if a dependency has no owner: give the facts, sign off by name</span></span></li>
+        <li><span class="n">4</span><span><b>List the requirements (RTO, MTPD, RPO)</b>
+          <span>Approve each card, then the documents</span></span></li>
+        <li><span class="n">5</span><span><b>Consolidate + sanity check → handover</b>
+          <span>Approve. The BIA ends here</span></span></li>
+      </ol>
+    </details>
+
+    <nav class="links">
+      <!-- All three open in a new tab: leaving this page would drop a conversation the
+           parent cannot restore, since the frame is cross-origin and holds its own session. -->
+      <a href="/demo/bia-workflow-guide/" target="_blank" rel="noopener">
+        <strong>Read the guide</strong>
+        <span>The six stages, the five prompts, and what only you can catch</span>
+      </a>
+      <a href="/demo/kb/" target="_blank" rel="noopener">
+        <strong>Knowledge base</strong>
+        <span>The addendum itself — PP1–PP6, core principles, the do-not-use list</span>
+      </a>
+      <!-- Verified 2026-08-10: this sharing link is scoped to the marschkamp FOLDER, not the
+           Documents library — its embedded listItemUniqueId is d4bc24a4-5227-48ff-b8eb-361b318d2524,
+           which is that folder's. Re-check the same way after any re-share; a link minted on the
+           library instead would expose every room. It carries its own link password, so a visitor
+           with no tenant identity can open it — but they need that password too. -->
+      <a href="https://kgerner.sharepoint.com/:f:/s/AIBCM/IgCkJLzUJ1L_SLjrNhsxjSUkAbxYgbmbhAKSXi3V67yhfB8?e=Xymdir"
+         target="_blank" rel="noopener">
+        <strong>Company files</strong>
+        <span>The marschkamp data room — what the assistant reads, and where it saves</span>
+      </a>
+      <!-- Not linked from any public page on purpose: the graph is noindex,nofollow and is a
+           URL you hand to a specific person. Here it sits inside the signed-in workspace, where
+           the reader already has this company's data room open above it (owner ruling
+           2026-08-20). -->
+      <a href="/demo/graph/marschkamp/" target="_blank" rel="noopener">
+        <strong>Dependency graph</strong>
+        <span>What depends on what, and where a deadline is already breached</span>
+      </a>
+    </nav>
+
+    <p class="note">It prepares, you decide. Every stage stops at your approval —
+      and nothing is real until it's saved.</p>
+    <p class="classification">Synthetic demo data only</p>
+  </div>
+</aside>
+
+<main>
+  <header class="ctx">
+    <div>
+      <h1>BIA working session</h1>
+      <p><span>Marschkamp</span><i>·</i><span>Six-stage workflow</span><i>·</i>
+        <span>Synthetic data only</span></p>
+    </div>
+    <a class="direct"
+       href="https://copilotstudio.microsoft.com/environments/Default-41716283-7cb5-47fe-996f-813640630454/bots/cre2b_BIAWorkflowpublic/webchat?__version__=2"
+       target="_blank" rel="noopener">Chat blank? Open the assistant directly</a>
+  </header>
+
+  <div class="frame">
+    <iframe
+      src="https://copilotstudio.microsoft.com/environments/Default-41716283-7cb5-47fe-996f-813640630454/bots/cre2b_BIAWorkflowpublic/webchat?__version__=2"
+      title="BIA-Workflow assistant"
+      allow="microphone; clipboard-write"></iframe>
+  </div>
+</main>
+
+<script>
+// The workflow map is a disclosure only where the rail sits above the chat.
+const map = document.getElementById('map');
+const narrow = window.matchMedia('(max-width:60rem)');
+const sync = () => { map.open = !narrow.matches; };
+narrow.addEventListener('change', sync); sync();
+
+document.getElementById('c').addEventListener('click', async function () {
+  const p = document.getElementById('p');
+  try {
+    await navigator.clipboard.writeText(p.textContent.trim());
+    this.textContent = 'Copied';
+  } catch {
+    // Clipboard blocked (permission, or a non-secure origin): select it so Ctrl-C still works.
+    const r = document.createRange();
+    r.selectNodeContents(p);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    this.textContent = 'Press Ctrl-C';
+  }
+  this.dataset.done = '';
+  setTimeout(() => { this.textContent = 'Copy'; delete this.dataset.done; }, 2000);
+});
+</script>

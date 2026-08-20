@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>marschkamp — resource dependency graph</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; margin: 0; }
+body { font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+       color: #1f2937; background: #f8fafc; }
+header { background: #ffffff; border-bottom: 1px solid #cbd5e1; padding: 14px 20px; }
+header h1 { font-size: 17px; font-weight: 600; }
+.meta { color: #475569; font-size: 12px; margin-top: 2px; }
+/* The referee's ⚠ line is a finding, not provenance, so it rides above the closed fold (KG
+   2026-07-31) — everything else in the band is one press away, this is not. It carries the
+   violet it already wore inside #evidence, at the band's 12px: hoisting it must relocate the
+   line, not restyle it. Two things it does NOT inherit from #evidence — a border of its own
+   (it hangs directly under the header hairline, and a second rule there is the doubled
+   hairline this branch already had to close once), and the 92px indent that used to align it
+   under the .src label column, which does not exist above the fold. One class, two homes:
+   only an objection is hoisted, so the #evidence-scoped copy below is still live and still
+   styles the ✓ pass line and the degraded line where they stay. Each scope dresses the span
+   for where it sits — this rule can never be the one the hoisted line depends on. */
+#second-opinion { background: #ffffff; padding: 4px 20px; font-size: 12px; }
+#second-opinion .line.so { color: #6d28d9; display: block; }
+/* The provenance fold sits outside <header>, so the header-scoped rules stop reaching its
+   lines: .meta is unscoped for them (it is worn nowhere else) and the white band they used
+   to inherit from <header> is restated here. Every <code> on the page moved into the fold,
+   which is why no rule chips them any more — the register sha and the evidence shas sit one
+   above the other now and read as the same kind of thing, which is what they are. Two seams
+   to keep shut: the summary drops .meta's margin-top (it is the band's first child, and 2px
+   of body background under the header hairline reads as a gap), and #evidence hands its own
+   border-bottom to the band, which is what ends the strip now — kept, the two doubled. */
+details.provenance { background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+details.provenance summary { cursor: pointer; margin-top: 0; }
+details.provenance > .meta { padding: 2px 20px; }
+#evidence { padding: 8px 20px; background: #ffffff; }
+#evidence .ev { font-size: 12px; color: #334155; padding: 2px 0; }
+#evidence .src { display: inline-block; min-width: 92px; font-weight: 600; color: #0f172a; }
+#evidence .line { color: #166534; }
+/* The non-warning second opinion, back in the row it always sat in — the indent aligns it
+   under the .src label column above. Unchanged from before the hoist on purpose: the ruling
+   moved the warning out, it did not restyle what stayed. */
+#evidence .line.so { color: #6d28d9; display: block; margin-left: 92px; }
+#evidence .absent { color: #64748b; font-style: italic; }
+.legend { padding: 6px 20px; font-size: 12px; color: #475569; max-width: 105ch; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 4px; border: 1px solid;
+        font: inherit; font-size: 11px; cursor: pointer; }
+.chip[data-crit="critical"] { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+.chip[data-crit="high"] { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.chip[data-crit="standard"] { color: #475569; border-color: #cbd5e1; background: #ffffff; }
+/* A property chip is the card badge made pressable, so it wears that badge's status colour
+   and its weight — pressing SPOF leaves cards lit that carry the red SPOF badge, and the two
+   must never disagree about which status they mean. Criticality chips stay lowercase words;
+   these stay uppercase badge strings, which is what tells the two groups apart at a glance. */
+.chip[data-flag="spof"] { color: #b91c1c; border-color: #fca5a5; background: #fef2f2;
+                          font-weight: 600; }
+.chip[data-flag="unowned"] { color: #b45309; border-color: #fcd34d; background: #fffbeb;
+                             font-weight: 600; }
+/* Pressed = filled with that chip's own ink. A lens can ghost 14 of 15 cards, so the control
+   that did it must not whisper — the old inset ring was currentColor on the chip's own tint,
+   the quietest possible signal for the loudest state change. The base .chip rules above are
+   deliberately untouched: they are what the badge-colour and AA-contrast tests read. Each fill
+   is that chip's existing ink, so no new colour enters the page (white on #b91c1c is 6.5:1,
+   on #b45309 4.8:1, on #475569 7.6:1 — all over the 4.5 AA floor). */
+.chip[aria-pressed="true"] { color: #ffffff; }
+.chip[data-crit="critical"][aria-pressed="true"],
+.chip[data-flag="spof"][aria-pressed="true"] { background: #b91c1c; border-color: #b91c1c; }
+.chip[data-crit="high"][aria-pressed="true"],
+.chip[data-flag="unowned"][aria-pressed="true"] { background: #b45309; border-color: #b45309; }
+.chip[data-crit="standard"][aria-pressed="true"] { background: #475569; border-color: #475569; }
+/* The chips are the page's only filters, so they live in a control bar, not run in as inline
+   text inside the legend paragraph — a reader should find them by looking, not by reading. */
+#toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+           padding: 4px 20px 10px; }
+/* A group is one wrap unit: at 390px the bar breaks to two rows, and a label that wraps away
+   from the chips it names is worse than no label. */
+#toolbar .tb-group { display: inline-flex; align-items: center; gap: 6px; }
+#toolbar .tb-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+                     color: #64748b; }
+#toolbar .tb-group + .tb-group { margin-left: 10px; }
+#toolbar .tb-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+                   font-size: 11px; color: #64748b; }
+#reset-view { display: inline-block; padding: 2px 10px; border-radius: 4px;
+              border: 1px solid #cbd5e1; background: #ffffff; font: inherit;
+              font-size: 12px; color: #1f2937; cursor: pointer; }
+main { display: flex; align-items: flex-start; gap: 0; }
+#canvas { flex: 1 1 auto; overflow: hidden; padding: 8px 0 24px 8px; }
+#facts { flex: 0 0 340px; background: #ffffff; border-left: 1px solid #cbd5e1;
+         padding: 14px 16px; position: sticky; top: 0; max-height: 100vh;
+         overflow: auto; font-size: 13px; }
+#facts h2 { font-size: 14px; margin-bottom: 8px; }
+#facts .hint { color: #64748b; font-style: italic; }
+#facts table { border-collapse: collapse; width: 100%; }
+#facts td { padding: 3px 6px 3px 0; vertical-align: top; border-bottom: 1px solid #f1f5f9; }
+#facts td:first-child { color: #475569; white-space: nowrap; width: 40%; }
+#facts .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600;
+                font-size: 11px; }
+#facts .badge.warn { color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; }
+#facts .badge.bad { color: #b91c1c; background: #fef2f2; border: 1px solid #fca5a5; }
+#facts h3 { font-size: 12px; color: #475569; margin: 12px 0 4px; }
+#facts ul { margin: 4px 0 8px; padding: 0; list-style: none; }
+#facts li { display: flex; gap: 4px; padding: 1px 0; }
+#facts .mut { color: #64748b; flex: none; }
+#facts .linklike { padding: 0; border: 0; background: none; font: inherit; color: #1d4ed8;
+                   text-align: left; text-decoration: underline; cursor: pointer; }
+#facts li .linklike { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                      white-space: nowrap; }
+/* The svg is a fixed window onto the graph: the JS pans and zooms the viewBox inside it,
+   so the element never resizes and #canvas never scrolls. Gestures are claimed here and
+   nowhere else — the page itself keeps its native scrolling and pinch-zoom. */
+/* The canvas takes the height that is actually there, rather than the height the graph's own
+   shape implies. It used to derive height from width via `aspect-ratio: var(--ar-*)`, which
+   locked the window to the graph's 4.14:1 ribbon: measured 288-303px tall while this cap
+   already permitted 740, i.e. a letterbox slot using ~40% of the screen. Everything inside
+   behaved correctly and the window was the problem — zooming in meant peering through the
+   slot (KG 2026-07-31, after three fixes that each corrected the contents instead).
+   The 160px is the chrome that remains after the legend and footer folded into Provenance;
+   subtracting it keeps the page from scrolling and stays honest if the chrome changes. */
+#canvas svg { display: block; width: 100%; height: calc(100vh - 160px);
+              touch-action: none; cursor: grab; }
+#canvas svg.grabbing, #canvas svg.grabbing .node { cursor: grabbing; }
+.node rect.box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2;
+                 transition: stroke-width 140ms ease; }
+/* These stay the mid tones. A critical card's stroke and its SPOF badge are both #b91c1c and
+   answer two different questions, which is real — but the fix is not here. Tried darkening the
+   scale to #7f1d1d / #78350f so severity and property separate by value: maroon and dark brown
+   are much harder to tell from each other than red and amber are, so it bought a severity/
+   property split by breaking the critical/high one, which is the more important reading.
+   Measured 2026-07-29; see the badge note below for where this actually has to be fixed. */
+.node.critical rect.box { stroke: #b91c1c; }
+.node.high rect.box { stroke: #b45309; }
+.node.process rect.box { fill: #f0fdfa; stroke: #0f766e; }
+/* Tints stay light enough that the #64748b sub line clears WCAG AA on top of them. */
+.node.activity rect.box { fill: #fbfaff; stroke: #6d28d9; }
+/* Variant B's aggregate consumer card: process teal, with two offset sheets behind it as
+   the "stack of N" affordance. The sheets are not `box`, so the selection ring's weight
+   bump touches only the front card. */
+.node.process_group rect.box { fill: #f0fdfa; stroke: #0f766e; }
+.node.process_group .stack { fill: #f0fdfa; stroke: #0f766e; stroke-width: 1.2; }
+.node.process_group .stack.s1 { opacity: .5; }
+.node.process_group .stack.s2 { opacity: .25; }
+/* The fold (aufklappen): folded consumer cards ship in the SVG but exist on screen only
+   while the active lens keeps them. body.unfolded is derived in applyLens from the same
+   keep set that dims — one engine, presentation-only here. The svg's two aspect ratios
+   come from inline --ar-* vars (Python-computed); pages without folded content set none,
+   the var() is then invalid and the attribute-intrinsic ratio applies. */
+.node.folded, .edge.to-folded { display: none; }
+/* The band opened WHOLE through 2026-07-30 — kept cards lit, the rest ghosted at
+   .12, the asset block's own grammar — because per-card visibility was tried
+   first and rejected in KG's second live review: a sparse keep left two cards
+   floating at their slots in the band's fixed grid, nothing around them, which
+   reads as random placement. KG reversed that 2026-07-31: the band's left column
+   sits under the "BIA activities" header, so the ghosted rows read as clutter
+   spilling out of a section they have nothing to do with — worse than the
+   floating-card cost, which per-card visibility brings back and which KG now
+   accepts as the lesser of the two. */
+body.unfolded .node.folded, body.unfolded .edge.to-folded { display: inline; }
+body.unfolded .node.folded.dim { display: none; }
+body.unfolded .edge.to-folded.dim { display: none; }
+/* An open stack has no sheets behind it — the cards are out in the band. */
+body.unfolded .node.process_group .stack { display: none; }
+/* The --ar-* pair is no longer an element aspect — it stays as Python's record of the content
+   extent, which homeView() reads to keep the whole graph on screen at rest and repack()
+   rewrites when the band opens. Binding it to `aspect-ratio` here is what starved the canvas
+   of height; the vars themselves are still load-bearing. */
+.node.unmodeled rect.box { stroke: #b91c1c; stroke-dasharray: 5 3; }
+/* The axis label, on the canvas where the reader is actually looking — the legend prose said
+   this and it did not stick. Recessive page ink, never a status colour (colour is already
+   spoken for), and inert: a press on a header is a press on the background. It rides inside
+   the svg, so it pans and zooms with the column it names. */
+.col-head { fill: #475569; font-size: 11px; font-weight: 600; pointer-events: none; }
+.node text { font-size: 12px; fill: #1f2937; }
+.node text.name { font-weight: 600; font-size: 13px; }
+/* The sub line stays recessive at every criticality. It used to be red on a critical card and
+   amber on a high one, which made the id — a lookup key — the loudest thing on the card while
+   the name it belongs to was the truncated one, so the card read id-first. Criticality is not
+   lost: the box stroke already carries it in colour and the sub line still ends in the literal
+   word, which is the carrier that survives a colour-blind reader anyway. #64748b on the #ffffff
+   box is 4.76:1, the same ink standard assets already used. */
+.node text.sub { fill: #64748b; font-size: 11px; }
+/* Property badges borrow criticality's channel, and that is the open one. The card has exactly
+   two channels and both are already spoken for by name: colour carries criticality, weight
+   carries selection (see .node.focused below). So a property flag has nowhere of its own to
+   live and lands in colour, where #b91c1c means "critical" on the stroke and "SPOF" here.
+   Hue-swapping does not fix it — the three property badges are three different hues, so
+   collapsing them onto one property colour just merges SPOF into PP4. The fix is a channel the
+   card does not have yet: a pill behind each badge, which needs a per-badge rect and therefore
+   a text-width estimate in Python with no font metrics available. That is a layout change, not
+   a colour one. Left deliberately; do not solve it in CSS. */
+.node tspan.b-spof, .node text.b-spof { fill: #b91c1c; font-weight: 700; font-size: 10px; }
+.node tspan.b-owner { fill: #b45309; font-weight: 700; font-size: 10px; }
+.node tspan.b-pp4 { fill: #6d28d9; font-weight: 700; font-size: 10px; }
+.node tspan.b-flags { fill: #475569; font-size: 10px; }
+.node { cursor: pointer; transition: opacity 140ms ease; }
+/* Keyboard-focus ring, pinned rather than left to the UA default. Distinct from the
+   .focused lens ring below: this marks where Tab is, that marks what is selected. */
+.node:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+/* Selection reads as weight, not colour — colour is already the criticality carrier. The
+   pulse is the deep-link arrival marker: it says "this is the node you asked for", swells
+   twice and settles on the ring weight. Decoration, so reduced motion drops it. */
+.node.focused rect.box { stroke-width: 3; }
+@keyframes node-pulse { 0%, 100% { stroke-width: 3; } 50% { stroke-width: 6.5; } }
+.node.pulse rect.box { animation: node-pulse 620ms ease-in-out 2; }
+/* Resting opacity stays .85, but the measurement behind that is spent. Tried .45 to calm the
+   base-view spray (~100 edges, none individually traceable, crossing the empty lower canvas):
+   it did calm it, and it also flattened every chip lens, where a kept edge had to read as
+   clearly surviving against the .12 dimmed field — .85/.12 is a 7x step, .45/.12 only 3.75x.
+   Measured 2026-07-29. Task 1 (2026-07-31) invalidated that comparison: `.edge.dim` hides
+   outright, so no lens leaves a dimmed field for a kept edge to survive against — a chip
+   lens now draws zero dimmed edges. The value is unchanged because nothing has argued it
+   down since, not because that experiment still holds. Reopening base-view density means
+   re-running .45 against what a lens actually leaves now — kept edges on bare canvas — not
+   against .12. The spray itself is still a routing symptom (every edge must cross the empty
+   canvas to reach the process column), so it belongs to the layout redesign, not to an
+   opacity knob. */
+.edge { fill: none; stroke: #94a3b8; stroke-width: 1.5; opacity: .85;
+        transition: opacity 140ms ease, stroke-width 140ms ease; }
+.edge.consumes { stroke: #0f766e; stroke-dasharray: 5 3; }
+.edge.activity_dep { stroke: #6d28d9; stroke-dasharray: 2 3; }
+.edge.hot { stroke-width: 2.5; opacity: 1; }
+/* One grammar, three presentations. .dim means "outside the keep set": what the reader can
+   act on stays and ghosts (a card keeps its column position and its click target), what they
+   cannot act on goes (an edge has no click handler, and a folded card's slot in an invisible
+   grid is not information). */
+.dim { opacity: .12; }
+.edge.dim { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+/* A phone cannot afford a fixed 340px sidebar next to the canvas — below the breakpoint
+   the panel goes full width underneath it instead of squeezing the graph to a strip. */
+@media (max-width: 720px) {
+  #facts { flex: 1 1 100%; border-left: 0; border-top: 1px solid #cbd5e1;
+           position: static; max-height: none; }
+  main { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<header>
+<h1>marschkamp — resource dependency graph</h1>
+<div class="meta">Synthetic demonstration data · BIA record 18 Aug 2026 · register 18 Aug 2026</div>
+</header>
+<div id="second-opinion"><span class="line so">⚠ Second opinion: The activity &#x27;Slaughter process (stunning → dressing)&#x27; states an MTPD of 24 h, but the dependency UV-CO2-01 imposes a tighter clock of ≈ 8 h on the schlachtung department without the record naming that clock as the binding constraint.</span></div>
+<details class="provenance">
+<summary class="meta">Provenance</summary>
+<div class="meta">Generated 2026-08-18T11:03:25+00:00 · register sha <code>ccdfec45</code> · renderer <code>d6154e5b</code> · synthetic demonstration data</div>
+<div id="evidence">
+<div class="ev"><span class="src">Register</span> <code>ccdfec45</code> <span class="when">2026-08-18T10:54:26+00:00</span> <span class="line">✓ Saved and checked: the register on file is byte-identical to the approved field update.</span></div>
+<div class="ev"><span class="src">BIA record</span> <code>d05974f7</code> <span class="when">2026-08-18T11:03:24+00:00</span> <span class="line">✓ Saved and checked: the file is byte-identical to the referee-validated record.</span></div>
+</div>
+<div class="legend">Left = no recorded upstream dependencies; horizontal distance =
+dependency depth, and each column is headed on the canvas with what it means. The two
+rightmost columns are both activities: <em>BIA activities</em> were assessed in the BIA record
+(impact grid, MTPD, owner); <em>dependent activities</em> are the register's note on each asset
+of whose work needs it — one line per asset, so one operation appears once per resource it
+needs. A column says only how deep an asset sits — SPOF and
+missing ownership are properties of the asset, not of a column, so they turn up at any depth.
+Other badges: PP4 (handoff issue), ⚑n (quality flags).</div>
+<div class="meta">Register-derived view · the Provenance fold holds the latest verified write per source
+· location.hash deep-links a node, an owner, a criticality level or a property
+(e.g. #KA-01, #flag:spof)</div>
+</details>
+<div id="toolbar"><span class="tb-group"><span class="tb-label">Criticality</span>
+<button class="chip" data-crit="critical" type="button">critical</button>
+<button class="chip" data-crit="high" type="button">high</button>
+<button class="chip" data-crit="standard" type="button">standard</button></span>
+<span class="tb-group"><span class="tb-label">Property</span>
+<button class="chip" data-flag="spof" type="button">SPOF</button>
+<button class="chip" data-flag="unowned" type="button">OWNER MISSING</button></span>
+<span class="tb-end">Esc clears
+<button type="button" id="reset-view">Reset view</button></span></div>
+<main>
+<div id="canvas"><svg width="1688" height="1204" viewBox="0 0 1688 1204" style="--ar-folded:1688/408;--ar-unfolded:1688/1204">
+<text class="col-head" x="24" y="37">No upstream dependencies</text><text class="col-head" x="264" y="37">Depends on 1 level</text><text class="col-head" x="504" y="37">Depends on 2 levels</text><text class="col-head" x="744" y="37">Depends on 3 levels</text><text class="col-head" x="984" y="37">Depends on 4 levels</text><text class="col-head" x="1224" y="37">BIA activities</text><text class="col-head" x="1464" y="37">Dependent activities</text>
+<path class="edge depends_on" data-src="KA-01" data-dst="UV-STROM-01" d="M264,176 C204,176 284,264 224,264"/><path class="edge depends_on" data-src="KA-02" data-dst="KA-01" d="M504,176 C444,176 524,176 464,176"/><path class="edge depends_on" data-src="KA-02" data-dst="UV-STROM-01" d="M504,176 C444,176 284,264 224,264"/><path class="edge depends_on" data-src="UV-WASSER-01" data-dst="UV-STROM-01" d="M264,88 C204,88 284,264 224,264"/><path class="edge depends_on" data-src="UV-DAMPF-01" data-dst="UV-STROM-01" d="M504,352 C444,352 284,264 224,264"/><path class="edge depends_on" data-src="UV-DAMPF-01" data-dst="UV-WASSER-01" d="M504,352 C444,352 524,88 464,88"/><path class="edge depends_on" data-src="UV-ABWASSER-01" data-dst="UV-STROM-01" d="M264,352 C204,352 284,264 224,264"/><path class="edge depends_on" data-src="IT-ERP-01" data-dst="UV-STROM-01" d="M264,264 C204,264 284,264 224,264"/><path class="edge depends_on" data-src="IT-WAAGE-01" data-dst="IT-ERP-01" d="M504,264 C444,264 524,264 464,264"/><path class="edge depends_on" data-src="IT-WAAGE-01" data-dst="UV-STROM-01" d="M504,264 C444,264 284,264 224,264"/><path class="edge depends_on" data-src="LF-ABP-01" data-dst="AN-SCHLACHT-01" d="M944,88 C1014,88 1014,176 944,176"/><path class="edge depends_on" data-src="LF-SPED-01" data-dst="KA-01" d="M504,88 C444,88 524,176 464,176"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="UV-STROM-01" d="M744,176 C684,176 284,264 224,264"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="UV-WASSER-01" d="M744,176 C684,176 524,88 464,88"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="UV-CO2-01" d="M744,176 C684,176 284,352 224,352"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="UV-DAMPF-01" d="M744,176 C684,176 764,352 704,352"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="KA-01" d="M744,176 C684,176 524,176 464,176"/><path class="edge depends_on" data-src="AN-SCHLACHT-01" data-dst="LF-ABP-01" d="M944,176 C1014,176 1014,88 944,88"/><path class="edge depends_on" data-src="AN-ZERLEG-01" data-dst="AN-SCHLACHT-01" d="M984,88 C924,88 1004,176 944,176"/><path class="edge depends_on" data-src="AN-ZERLEG-01" data-dst="KA-01" d="M984,88 C924,88 524,176 464,176"/><path class="edge depends_on" data-src="AN-ZERLEG-01" data-dst="UV-STROM-01" d="M984,88 C924,88 284,264 224,264"/><path class="edge depends_on" data-src="AN-ZERLEG-01" data-dst="IT-WAAGE-01" d="M984,88 C924,88 764,264 704,264"/><path class="edge depends_on" data-src="AN-ZERLEG-01" data-dst="PE-ZERLEG-01" d="M984,88 C924,88 284,88 224,88"/><path class="edge consumes to-folded" data-src="KA-01" data-dst="proc:schlachtung:carcass chilling directly on the line" d="M464,176 C524,176 1164,942 1224,942"/><path class="edge consumes to-folded" data-src="KA-01" data-dst="proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection" d="M464,176 C524,176 1404,834 1464,834"/><path class="edge consumes to-folded" data-src="KA-01" data-dst="proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)" d="M464,176 C524,176 1164,456 1224,456"/><path class="edge consumes to-folded" data-src="KA-01" data-dst="proc:qs:temperature evidence for HACCP releases" d="M464,176 C524,176 1164,780 1224,780"/><path class="edge consumes to-folded" data-src="KA-02" data-dst="proc:kuehlung-lager-versand:blast freezing before frozen storage intake" d="M704,176 C764,176 1164,348 1224,348"/><path class="edge consumes to-folded" data-src="UV-STROM-01" data-dst="proc:all-departments:every production, chilling, hygiene and administrative activity on site" d="M224,264 C284,264 1164,294 1224,294"/><path class="edge consumes to-folded" data-src="UV-WASSER-01" data-dst="proc:schlachtung:statutory carcass washing and knife sterilisation" d="M464,88 C524,88 1164,1104 1224,1104"/><path class="edge consumes to-folded" data-src="UV-WASSER-01" data-dst="proc:zerlegung:hand and equipment hygiene between batches" d="M464,88 C524,88 1404,888 1464,888"/><path class="edge consumes to-folded" data-src="UV-WASSER-01" data-dst="proc:qs:hygiene verification and water-quality records" d="M464,88 C524,88 1164,726 1224,726"/><path class="edge consumes to-folded" data-src="UV-CO2-01" data-dst="proc:schlachtung:CO₂ group stunning of pigs" d="M224,352 C284,352 1164,888 1224,888"/><path class="edge consumes to-folded" data-src="UV-CO2-01" data-dst="proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)" d="M224,352 C284,352 1404,402 1464,402"/><path class="edge consumes to-folded" data-src="UV-DAMPF-01" data-dst="proc:schlachtung:scalding 58–62 °C before dehairing" d="M704,352 C764,352 1164,1050 1224,1050"/><path class="edge consumes to-folded" data-src="UV-DAMPF-01" data-dst="proc:zerlegung:CIP cleaning for a hygienic next-day start" d="M704,352 C764,352 1404,780 1464,780"/><path class="edge consumes to-folded" data-src="UV-ABWASSER-01" data-dst="proc:schlachtung:wastewater arising from slaughter/scalding" d="M464,352 C524,352 1164,1158 1224,1158"/><path class="edge consumes to-folded" data-src="UV-ABWASSER-01" data-dst="proc:zerlegung:wastewater/fat arising from cutting/cleaning" d="M464,352 C524,352 1404,1104 1464,1104"/><path class="edge consumes to-folded" data-src="IT-ERP-01" data-dst="proc:verpackung:batch/label data at the packing lines" d="M464,264 C524,264 1404,294 1464,294"/><path class="edge consumes to-folded" data-src="IT-ERP-01" data-dst="proc:kuehlung-lager-versand:delivery notes, picking, loading list" d="M464,264 C524,264 1164,510 1224,510"/><path class="edge consumes to-folded" data-src="IT-ERP-01" data-dst="proc:qs:traceability and release" d="M464,264 C524,264 1164,834 1224,834"/><path class="edge consumes to-folded" data-src="IT-ERP-01" data-dst="proc:vertrieb:order/EDI with grocery-retail customers" d="M464,264 C524,264 1404,726 1464,726"/><path class="edge consumes to-folded" data-src="IT-WAAGE-01" data-dst="proc:verpackung:weighing and price marking of finished packs" d="M704,264 C764,264 1404,510 1464,510"/><path class="edge consumes to-folded" data-src="IT-WAAGE-01" data-dst="proc:kuehlung-lager-versand:dispatch weighing" d="M704,264 C764,264 1164,618 1224,618"/><path class="edge consumes to-folded" data-src="LF-ABP-01" data-dst="proc:schlachtung:ongoing removal of Category 3 material from the line" d="M944,88 C1004,88 1164,996 1224,996"/><path class="edge consumes to-folded" data-src="LF-ABP-01" data-dst="proc:zerlegung:removal of bones and trim from cutting" d="M944,88 C1004,88 1404,996 1464,996"/><path class="edge consumes to-folded" data-src="LF-SPED-01" data-dst="proc:kuehlung-lager-versand:delivery of finished product in the cold chain" d="M704,88 C764,88 1164,564 1224,564"/><path class="edge consumes to-folded" data-src="LF-SPED-01" data-dst="proc:vertrieb:delivery reliability (OTIF) to grocery retail" d="M704,88 C764,88 1404,564 1464,564"/><path class="edge consumes to-folded" data-src="LF-VERP-01" data-dst="proc:verpackung:packing material and MAP gas at the lines" d="M224,176 C284,176 1404,456 1464,456"/><path class="edge consumes to-folded" data-src="AN-SCHLACHT-01" data-dst="proc:zerlegung:supply of carcasses into cutting" d="M944,176 C1004,176 1404,1050 1464,1050"/><path class="edge consumes to-folded" data-src="AN-SCHLACHT-01" data-dst="proc:kuehlung-lager-versand:carcass chilling after slaughter" d="M944,176 C1004,176 1164,402 1224,402"/><path class="edge consumes to-folded" data-src="AN-ZERLEG-01" data-dst="proc:verpackung:cut parts into packing" d="M1184,88 C1244,88 1404,348 1464,348"/><path class="edge consumes to-folded" data-src="AN-ZERLEG-01" data-dst="proc:kuehlung-lager-versand:storage/dispatch of cut product" d="M1184,88 C1244,88 1164,672 1224,672"/><path class="edge consumes to-folded" data-src="AN-ZERLEG-01" data-dst="proc:vertrieb:delivery volume/range for grocery retail" d="M1184,88 C1244,88 1404,672 1464,672"/><path class="edge consumes to-folded" data-src="PE-ZERLEG-01" data-dst="proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)" d="M224,88 C284,88 1404,942 1464,942"/><path class="edge consumes to-folded" data-src="PE-ZERLEG-01" data-dst="proc:vertrieb:delivery volume depends on cutting throughput" d="M224,88 C284,88 1404,618 1464,618"/><path class="edge activity_dep" data-src="act:Slaughter Process" data-dst="AN-SCHLACHT-01" d="M1224,156 C1164,156 1004,176 944,176"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="AN-ZERLEG-01" d="M1224,84 C1164,84 1244,88 1184,88"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="AN-SCHLACHT-01" d="M1224,84 C1164,84 1004,176 944,176"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="KA-01" d="M1224,84 C1164,84 524,176 464,176"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="UV-STROM-01" d="M1224,84 C1164,84 284,264 224,264"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="UV-WASSER-01" d="M1224,84 C1164,84 524,88 464,88"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="UV-DAMPF-01" d="M1224,84 C1164,84 764,352 704,352"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="UV-ABWASSER-01" d="M1224,84 C1164,84 524,352 464,352"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="IT-ERP-01" d="M1224,84 C1164,84 524,264 464,264"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="IT-WAAGE-01" d="M1224,84 C1164,84 764,264 704,264"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="PE-ZERLEG-01" d="M1224,84 C1164,84 284,88 224,88"/><path class="edge activity_dep" data-src="act:Cutting / deboning" data-dst="LF-ABP-01" d="M1224,84 C1164,84 1004,88 944,88"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="AN-SCHLACHT-01" d="M1224,228 C1164,228 1004,176 944,176"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="UV-STROM-01" d="M1224,228 C1164,228 284,264 224,264"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="UV-WASSER-01" d="M1224,228 C1164,228 524,88 464,88"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="UV-CO2-01" d="M1224,228 C1164,228 284,352 224,352"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="UV-DAMPF-01" d="M1224,228 C1164,228 764,352 704,352"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="KA-01" d="M1224,228 C1164,228 524,176 464,176"/><path class="edge activity_dep" data-src="act:Slaughter process (stunning → dressing)" data-dst="LF-ABP-01" d="M1224,228 C1164,228 1004,88 944,88"/><path class="edge consumes" data-src="AN-SCHLACHT-01" data-dst="group:processes" d="M944,176 C1004,176 1404,88 1464,88"/><path class="edge consumes" data-src="AN-ZERLEG-01" data-dst="group:processes" d="M1184,88 C1244,88 1404,88 1464,88"/><path class="edge consumes" data-src="IT-ERP-01" data-dst="group:processes" d="M464,264 C524,264 1404,88 1464,88"/><path class="edge consumes" data-src="IT-WAAGE-01" data-dst="group:processes" d="M704,264 C764,264 1404,88 1464,88"/><path class="edge consumes" data-src="KA-01" data-dst="group:processes" d="M464,176 C524,176 1404,88 1464,88"/><path class="edge consumes" data-src="KA-02" data-dst="group:processes" d="M704,176 C764,176 1404,88 1464,88"/><path class="edge consumes" data-src="LF-ABP-01" data-dst="group:processes" d="M944,88 C1004,88 1404,88 1464,88"/><path class="edge consumes" data-src="LF-SPED-01" data-dst="group:processes" d="M704,88 C764,88 1404,88 1464,88"/><path class="edge consumes" data-src="LF-VERP-01" data-dst="group:processes" d="M224,176 C284,176 1404,88 1464,88"/><path class="edge consumes" data-src="PE-ZERLEG-01" data-dst="group:processes" d="M224,88 C284,88 1404,88 1464,88"/><path class="edge consumes" data-src="UV-ABWASSER-01" data-dst="group:processes" d="M464,352 C524,352 1404,88 1464,88"/><path class="edge consumes" data-src="UV-CO2-01" data-dst="group:processes" d="M224,352 C284,352 1404,88 1464,88"/><path class="edge consumes" data-src="UV-DAMPF-01" data-dst="group:processes" d="M704,352 C764,352 1404,88 1464,88"/><path class="edge consumes" data-src="UV-STROM-01" data-dst="group:processes" d="M224,264 C284,264 1404,88 1464,88"/><path class="edge consumes" data-src="UV-WASSER-01" data-dst="group:processes" d="M464,88 C524,88 1404,88 1464,88"/>
+<g class="node asset critical" data-id="KA-01" tabindex="0" role="button"><title>Central refrigeration plant NH₃/CO₂ cascade, compressors 1–3 (N+1), refrigeration plant room</title><rect class="box" x="264" y="144" width="200" height="64" rx="8"/><text class="name" x="274" y="166">Central refrigeration pla…</text><text class="sub" x="274" y="182">KA-01 · critical</text><text x="274" y="198"><tspan class="b-pp4">PP4</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset high" data-id="KA-02" tabindex="0" role="button"><title>Blast freezer / blast tunnel</title><rect class="box" x="504" y="144" width="200" height="64" rx="8"/><text class="name" x="514" y="166">Blast freezer / blast tun…</text><text class="sub" x="514" y="182">KA-02 · Plant (refrigeration) · high</text><text x="514" y="198"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset critical" data-id="UV-STROM-01" tabindex="0" role="button"><title>Grid connection 20 kV + transformer station + 2× standby generator (NEA) 1,250 kVA diesel</title><rect class="box" x="24" y="232" width="200" height="64" rx="8"/><text class="name" x="34" y="254">Grid connection 20 kV + t…</text><text class="sub" x="34" y="270">UV-STROM-01 · critical</text><text x="34" y="286"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-pp4">PP4</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset critical" data-id="UV-WASSER-01" tabindex="0" role="button"><title>Potable water (2 municipal networks + own well with treatment)</title><rect class="box" x="264" y="56" width="200" height="64" rx="8"/><text class="name" x="274" y="78">Potable water (2 municipa…</text><text class="sub" x="274" y="94">UV-WASSER-01 · critical</text></g><g class="node asset critical" data-id="UV-CO2-01" tabindex="0" role="button"><title>CO₂ bulk 50 t tank (pig stunning + MAP packing)</title><rect class="box" x="24" y="320" width="200" height="64" rx="8"/><text class="name" x="34" y="342">CO₂ bulk 50 t tank (pig s…</text><text class="sub" x="34" y="358">UV-CO2-01 · critical</text><text x="34" y="374"><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset high" data-id="UV-DAMPF-01" tabindex="0" role="button"><title>Steam/hot water (gas boiler house): scalding 58–62 °C + CIP</title><rect class="box" x="504" y="320" width="200" height="64" rx="8"/><text class="name" x="514" y="342">Steam/hot water (gas boil…</text><text class="sub" x="514" y="358">UV-DAMPF-01 · high</text><text x="514" y="374"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset critical" data-id="UV-ABWASSER-01" tabindex="0" role="button"><title>Wastewater treatment plant DAF + biological stage, discharge permit (Waste Water Ordinance (AbwV) Annex 10)</title><rect class="box" x="264" y="320" width="200" height="64" rx="8"/><text class="name" x="274" y="342">Wastewater treatment plan…</text><text class="sub" x="274" y="358">UV-ABWASSER-01 · critical</text><text x="274" y="374"><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset critical" data-id="IT-ERP-01" tabindex="0" role="button"><title>SAP S/4HANA + MES: order, batch (178/2002), scale, label (1169/2011), EDI</title><rect class="box" x="264" y="232" width="200" height="64" rx="8"/><text class="name" x="274" y="254">SAP S/4HANA + MES: order,…</text><text class="sub" x="274" y="270">IT-ERP-01 · IT system · critical</text><text x="274" y="286"><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset critical" data-id="IT-WAAGE-01" tabindex="0" role="button"><title>Weighing/labelling/price-marking system</title><rect class="box" x="504" y="232" width="200" height="64" rx="8"/><text class="name" x="514" y="254">Weighing/labelling/price-…</text><text class="sub" x="514" y="270">IT-WAAGE-01 · IT system · critical</text><text x="514" y="286"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset critical" data-id="LF-ABP-01" tabindex="0" role="button"><title>Category 3 collection of animal by-products (daily)</title><rect class="box" x="744" y="56" width="200" height="64" rx="8"/><text class="name" x="754" y="78">Category 3 collection of…</text><text class="sub" x="754" y="94">LF-ABP-01 · critical</text><text x="754" y="110"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-pp4">PP4</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset high" data-id="LF-SPED-01" tabindex="0" role="button"><title>Refrigerated transport / trunking (own + contract)</title><rect class="box" x="504" y="56" width="200" height="64" rx="8"/><text class="name" x="514" y="78">Refrigerated transport /…</text><text class="sub" x="514" y="94">LF-SPED-01 · high</text><text x="514" y="110"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset high" data-id="LF-VERP-01" tabindex="0" role="button"><title>Packing material + MAP gas (O₂/CO₂/N₂)</title><rect class="box" x="24" y="144" width="200" height="64" rx="8"/><text class="name" x="34" y="166">Packing material + MAP ga…</text><text class="sub" x="34" y="182">LF-VERP-01 · high</text><text x="34" y="198"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset critical" data-id="AN-SCHLACHT-01" tabindex="0" role="button"><title>Slaughter line: CO₂ stunning, scalding, dehairing, evisceration, EUROP grading</title><rect class="box" x="744" y="144" width="200" height="64" rx="8"/><text class="name" x="754" y="166">Slaughter line: CO₂ stunn…</text><text class="sub" x="754" y="182">AN-SCHLACHT-01 · critical</text><text x="754" y="198"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑1</tspan></text></g><g class="node asset critical" data-id="AN-ZERLEG-01" tabindex="0" role="button"><title>Cutting line: band saws, deboning, trimming, metal detection</title><rect class="box" x="984" y="56" width="200" height="64" rx="8"/><text class="name" x="994" y="78">Cutting line: band saws,…</text><text class="sub" x="994" y="94">AN-ZERLEG-01 · critical</text><text x="994" y="110"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node asset critical" data-id="PE-ZERLEG-01" tabindex="0" role="button"><title>Cutting labour pool (minimum staffing 1 shift ≈ 90 cutters)</title><rect class="box" x="24" y="56" width="200" height="64" rx="8"/><text class="name" x="34" y="78">Cutting labour pool (mini…</text><text class="sub" x="34" y="94">PE-ZERLEG-01 · Personnel · critical</text><text x="34" y="110"><tspan class="b-spof">SPOF</tspan><tspan> </tspan><tspan class="b-pp4">PP4</tspan><tspan> </tspan><tspan class="b-flags">⚑2</tspan></text></g><g class="node process folded" data-id="proc:schlachtung:carcass chilling directly on the line" tabindex="0" role="button"><title>carcass chilling directly on the line</title><rect class="box" x="1224" y="920" width="200" height="44" rx="8"/><text class="name" x="1234" y="937">carcass chilling directly…</text><text class="sub" x="1234" y="952">schlachtung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection" tabindex="0" role="button"><title>chilled cutting room ≤ 12 °C and WIP protection</title><rect class="box" x="1464" y="812" width="200" height="44" rx="8"/><text class="name" x="1474" y="829">chilled cutting room ≤ 12…</text><text class="sub" x="1474" y="844">zerlegung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)" tabindex="0" role="button"><title>chilled (+2 °C) and frozen storage (−22 °C)</title><rect class="box" x="1224" y="434" width="200" height="44" rx="8"/><text class="name" x="1234" y="451">chilled (+2 °C) and froze…</text><text class="sub" x="1234" y="466">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:qs:temperature evidence for HACCP releases" tabindex="0" role="button"><title>temperature evidence for HACCP releases</title><rect class="box" x="1224" y="758" width="200" height="44" rx="8"/><text class="name" x="1234" y="775">temperature evidence for…</text><text class="sub" x="1234" y="790">qs · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:blast freezing before frozen storage intake" tabindex="0" role="button"><title>blast freezing before frozen storage intake</title><rect class="box" x="1224" y="326" width="200" height="44" rx="8"/><text class="name" x="1234" y="343">blast freezing before fro…</text><text class="sub" x="1234" y="358">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:all-departments:every production, chilling, hygiene and administrative activity on site" tabindex="0" role="button"><title>every production, chilling, hygiene and administrative activity on site</title><rect class="box" x="1224" y="272" width="200" height="44" rx="8"/><text class="name" x="1234" y="289">every production, chillin…</text><text class="sub" x="1234" y="304">all-departments · activity</text></g><g class="node process folded" data-id="proc:schlachtung:statutory carcass washing and knife sterilisation" tabindex="0" role="button"><title>statutory carcass washing and knife sterilisation</title><rect class="box" x="1224" y="1082" width="200" height="44" rx="8"/><text class="name" x="1234" y="1099">statutory carcass washing…</text><text class="sub" x="1234" y="1114">schlachtung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:hand and equipment hygiene between batches" tabindex="0" role="button"><title>hand and equipment hygiene between batches</title><rect class="box" x="1464" y="866" width="200" height="44" rx="8"/><text class="name" x="1474" y="883">hand and equipment hygien…</text><text class="sub" x="1474" y="898">zerlegung · activity</text></g><g class="node process folded" data-id="proc:qs:hygiene verification and water-quality records" tabindex="0" role="button"><title>hygiene verification and water-quality records</title><rect class="box" x="1224" y="704" width="200" height="44" rx="8"/><text class="name" x="1234" y="721">hygiene verification and…</text><text class="sub" x="1234" y="736">qs · activity</text></g><g class="node process folded" data-id="proc:schlachtung:CO₂ group stunning of pigs" tabindex="0" role="button"><title>CO₂ group stunning of pigs</title><rect class="box" x="1224" y="866" width="200" height="44" rx="8"/><text class="name" x="1234" y="883">CO₂ group stunning of pigs</text><text class="sub" x="1234" y="898">schlachtung · activity</text></g><g class="node process folded" data-id="proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)" tabindex="0" role="button"><title>modified-atmosphere packing (MAP, O₂/CO₂/N₂)</title><rect class="box" x="1464" y="380" width="200" height="44" rx="8"/><text class="name" x="1474" y="397">modified-atmosphere packi…</text><text class="sub" x="1474" y="412">verpackung · activity</text></g><g class="node process folded" data-id="proc:schlachtung:scalding 58–62 °C before dehairing" tabindex="0" role="button"><title>scalding 58–62 °C before dehairing</title><rect class="box" x="1224" y="1028" width="200" height="44" rx="8"/><text class="name" x="1234" y="1045">scalding 58–62 °C before…</text><text class="sub" x="1234" y="1060">schlachtung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:CIP cleaning for a hygienic next-day start" tabindex="0" role="button"><title>CIP cleaning for a hygienic next-day start</title><rect class="box" x="1464" y="758" width="200" height="44" rx="8"/><text class="name" x="1474" y="775">CIP cleaning for a hygien…</text><text class="sub" x="1474" y="790">zerlegung · activity</text></g><g class="node process folded" data-id="proc:schlachtung:wastewater arising from slaughter/scalding" tabindex="0" role="button"><title>wastewater arising from slaughter/scalding</title><rect class="box" x="1224" y="1136" width="200" height="44" rx="8"/><text class="name" x="1234" y="1153">wastewater arising from s…</text><text class="sub" x="1234" y="1168">schlachtung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:wastewater/fat arising from cutting/cleaning" tabindex="0" role="button"><title>wastewater/fat arising from cutting/cleaning</title><rect class="box" x="1464" y="1082" width="200" height="44" rx="8"/><text class="name" x="1474" y="1099">wastewater/fat arising fr…</text><text class="sub" x="1474" y="1114">zerlegung · activity</text></g><g class="node process folded" data-id="proc:verpackung:batch/label data at the packing lines" tabindex="0" role="button"><title>batch/label data at the packing lines</title><rect class="box" x="1464" y="272" width="200" height="44" rx="8"/><text class="name" x="1474" y="289">batch/label data at the p…</text><text class="sub" x="1474" y="304">verpackung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:delivery notes, picking, loading list" tabindex="0" role="button"><title>delivery notes, picking, loading list</title><rect class="box" x="1224" y="488" width="200" height="44" rx="8"/><text class="name" x="1234" y="505">delivery notes, picking,…</text><text class="sub" x="1234" y="520">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:qs:traceability and release" tabindex="0" role="button"><title>traceability and release</title><rect class="box" x="1224" y="812" width="200" height="44" rx="8"/><text class="name" x="1234" y="829">traceability and release</text><text class="sub" x="1234" y="844">qs · activity</text></g><g class="node process folded" data-id="proc:vertrieb:order/EDI with grocery-retail customers" tabindex="0" role="button"><title>order/EDI with grocery-retail customers</title><rect class="box" x="1464" y="704" width="200" height="44" rx="8"/><text class="name" x="1474" y="721">order/EDI with grocery-re…</text><text class="sub" x="1474" y="736">vertrieb · activity</text></g><g class="node process folded" data-id="proc:verpackung:weighing and price marking of finished packs" tabindex="0" role="button"><title>weighing and price marking of finished packs</title><rect class="box" x="1464" y="488" width="200" height="44" rx="8"/><text class="name" x="1474" y="505">weighing and price markin…</text><text class="sub" x="1474" y="520">verpackung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:dispatch weighing" tabindex="0" role="button"><title>dispatch weighing</title><rect class="box" x="1224" y="596" width="200" height="44" rx="8"/><text class="name" x="1234" y="613">dispatch weighing</text><text class="sub" x="1234" y="628">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:schlachtung:ongoing removal of Category 3 material from the line" tabindex="0" role="button"><title>ongoing removal of Category 3 material from the line</title><rect class="box" x="1224" y="974" width="200" height="44" rx="8"/><text class="name" x="1234" y="991">ongoing removal of Catego…</text><text class="sub" x="1234" y="1006">schlachtung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:removal of bones and trim from cutting" tabindex="0" role="button"><title>removal of bones and trim from cutting</title><rect class="box" x="1464" y="974" width="200" height="44" rx="8"/><text class="name" x="1474" y="991">removal of bones and trim…</text><text class="sub" x="1474" y="1006">zerlegung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:delivery of finished product in the cold chain" tabindex="0" role="button"><title>delivery of finished product in the cold chain</title><rect class="box" x="1224" y="542" width="200" height="44" rx="8"/><text class="name" x="1234" y="559">delivery of finished prod…</text><text class="sub" x="1234" y="574">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:vertrieb:delivery reliability (OTIF) to grocery retail" tabindex="0" role="button"><title>delivery reliability (OTIF) to grocery retail</title><rect class="box" x="1464" y="542" width="200" height="44" rx="8"/><text class="name" x="1474" y="559">delivery reliability (OTI…</text><text class="sub" x="1474" y="574">vertrieb · activity</text></g><g class="node process folded" data-id="proc:verpackung:packing material and MAP gas at the lines" tabindex="0" role="button"><title>packing material and MAP gas at the lines</title><rect class="box" x="1464" y="434" width="200" height="44" rx="8"/><text class="name" x="1474" y="451">packing material and MAP…</text><text class="sub" x="1474" y="466">verpackung · activity</text></g><g class="node process folded" data-id="proc:zerlegung:supply of carcasses into cutting" tabindex="0" role="button"><title>supply of carcasses into cutting</title><rect class="box" x="1464" y="1028" width="200" height="44" rx="8"/><text class="name" x="1474" y="1045">supply of carcasses into…</text><text class="sub" x="1474" y="1060">zerlegung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:carcass chilling after slaughter" tabindex="0" role="button"><title>carcass chilling after slaughter</title><rect class="box" x="1224" y="380" width="200" height="44" rx="8"/><text class="name" x="1234" y="397">carcass chilling after sl…</text><text class="sub" x="1234" y="412">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:verpackung:cut parts into packing" tabindex="0" role="button"><title>cut parts into packing</title><rect class="box" x="1464" y="326" width="200" height="44" rx="8"/><text class="name" x="1474" y="343">cut parts into packing</text><text class="sub" x="1474" y="358">verpackung · activity</text></g><g class="node process folded" data-id="proc:kuehlung-lager-versand:storage/dispatch of cut product" tabindex="0" role="button"><title>storage/dispatch of cut product</title><rect class="box" x="1224" y="650" width="200" height="44" rx="8"/><text class="name" x="1234" y="667">storage/dispatch of cut p…</text><text class="sub" x="1234" y="682">kuehlung-lager-versand · activity</text></g><g class="node process folded" data-id="proc:vertrieb:delivery volume/range for grocery retail" tabindex="0" role="button"><title>delivery volume/range for grocery retail</title><rect class="box" x="1464" y="650" width="200" height="44" rx="8"/><text class="name" x="1474" y="667">delivery volume/range for…</text><text class="sub" x="1474" y="682">vertrieb · activity</text></g><g class="node process folded" data-id="proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)" tabindex="0" role="button"><title>minimum staffing 1 shift (≈ 90 cutters)</title><rect class="box" x="1464" y="920" width="200" height="44" rx="8"/><text class="name" x="1474" y="937">minimum staffing 1 shift…</text><text class="sub" x="1474" y="952">zerlegung · activity</text></g><g class="node process folded" data-id="proc:vertrieb:delivery volume depends on cutting throughput" tabindex="0" role="button"><title>delivery volume depends on cutting throughput</title><rect class="box" x="1464" y="596" width="200" height="44" rx="8"/><text class="name" x="1474" y="613">delivery volume depends o…</text><text class="sub" x="1474" y="628">vertrieb · activity</text></g><g class="node activity" data-id="act:Slaughter Process" tabindex="0" role="button"><title>Slaughter Process</title><rect class="box" x="1224" y="128" width="200" height="56" rx="8"/><text class="name" x="1234" y="148">Slaughter Process</text><text class="sub" x="1234" y="164">act:Slaughter Process · BIA activity</text></g><g class="node activity" data-id="act:Cutting / deboning" tabindex="0" role="button"><title>Cutting / deboning</title><rect class="box" x="1224" y="56" width="200" height="56" rx="8"/><text class="name" x="1234" y="76">Cutting / deboning</text><text class="sub" x="1234" y="92">act:Cutting / deboning · BIA activity</text></g><g class="node activity" data-id="act:Slaughter process (stunning → dressing)" tabindex="0" role="button"><title>Slaughter process (stunning → dressing)</title><rect class="box" x="1224" y="200" width="200" height="56" rx="8"/><text class="name" x="1234" y="220">Slaughter process (stunni…</text><text class="sub" x="1234" y="236">act:Slaughter process (stunning → dre…</text></g><g class="node process_group" data-id="group:processes" tabindex="0" role="button"><title>33 dependent activities</title><rect class="stack s2" x="1474" y="66" width="200" height="64" rx="8"/><rect class="stack s1" x="1469" y="61" width="200" height="64" rx="8"/><rect class="box" x="1464" y="56" width="200" height="64" rx="8"/><text class="name" x="1474" y="78">33 dependent activities</text><text class="sub" x="1474" y="94">7 departments · select for the list</text></g>
+</svg></div>
+<aside id="facts"></aside>
+</main>
+<script type="application/json" id="data-graph">{"nodes": [{"id": "KA-01", "kind": "asset", "owner_missing": false, "pp4_issue": true, "quality_flag_count": 2, "name": "Central refrigeration plant NH₃/CO₂ cascade, compressors 1–3 (N+1), refrigeration plant room", "asset_type": "Plant (refrigeration)", "bereich": "refrigeration plant room", "owner_name": "Dirk Wohlleben", "criticality": 1, "rto": "4 h", "rpo": "n/a (physical)", "mtpd": "Total failure → cold chain in hours; cutting WIP is the tightest clock (see gated BIA Cutting)", "spof": false, "redundancy": "N+1 (compressors 1–3); no redundant refrigeration plant room", "supplier": "Frostmark Kältetechnik GmbH", "contract_status": "Maintenance/emergency-service contract Frostmark KT-2023-11 in force (24/7, penalty-backed).", "col": 1, "row": 1, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01"], "impact": ["KA-02", "LF-SPED-01", "AN-SCHLACHT-01", "AN-ZERLEG-01", "LF-ABP-01"], "procs": ["proc:schlachtung:carcass chilling directly on the line", "proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection", "proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)", "proc:qs:temperature evidence for HACCP releases"], "acts": ["act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "KA-02", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Blast freezer / blast tunnel", "asset_type": "Plant (refrigeration)", "bereich": "Frozen area", "owner_name": "Dirk Wohlleben", "criticality": 2, "rto": "8 h", "rpo": "n/a (physical)", "mtpd": "Frozen line backs up from ≈ 8 h; chilled sales partly substitutable", "spof": true, "redundancy": "none (single blast tunnel)", "supplier": "Frostmark Kältetechnik GmbH", "contract_status": "Covered under Frostmark framework contract KT-2023-11.", "col": 2, "row": 1, "keep_extra": ["group:processes"], "chain": ["KA-01", "UV-STROM-01"], "impact": [], "procs": ["proc:kuehlung-lager-versand:blast freezing before frozen storage intake"], "acts": [], "crit": "high"}, {"id": "UV-STROM-01", "kind": "asset", "owner_missing": false, "pp4_issue": true, "quality_flag_count": 2, "name": "Grid connection 20 kV + transformer station + 2× standby generator (NEA) 1,250 kVA diesel", "asset_type": "Utility (power)", "bereich": "Transformer station / energy centre", "owner_name": "Dirk Wohlleben", "criticality": 1, "rto": "0 h", "rpo": "n/a (physical)", "mtpd": "On a grid outage the NEAs carry only cold store + controls; the full line stops immediately", "spof": true, "redundancy": "2× NEA 1,250 kVA (diesel reserve 8 h) — secures cold store + controls, NOT the full line", "supplier": "Küstennetz AG (grid operator)", "contract_status": "Grid connection on the grid operator's standard terms; no priority/mobile-generator contract.", "col": 0, "row": 2, "keep_extra": ["group:processes"], "chain": [], "impact": ["KA-01", "KA-02", "UV-WASSER-01", "UV-DAMPF-01", "UV-ABWASSER-01", "IT-ERP-01", "IT-WAAGE-01", "AN-SCHLACHT-01", "AN-ZERLEG-01", "LF-ABP-01", "LF-SPED-01"], "procs": ["proc:all-departments:every production, chilling, hygiene and administrative activity on site"], "acts": ["act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "UV-WASSER-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 0, "name": "Potable water (2 municipal networks + own well with treatment)", "asset_type": "Utility (water)", "bereich": "Waterworks / site", "owner_name": "Dirk Wohlleben", "criticality": 1, "rto": "0 h", "rpo": "n/a (physical)", "mtpd": "Production stops immediately on loss of potable water (statutory); restart quick after it returns", "spof": false, "redundancy": "2 municipal networks + own well (manual switchover)", "supplier": "Municipal utilities (2 municipal networks) + own well", "contract_status": "Standard supply terms; well as own reserve.", "col": 1, "row": 0, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01"], "impact": ["UV-DAMPF-01", "AN-SCHLACHT-01", "LF-ABP-01", "AN-ZERLEG-01"], "procs": ["proc:schlachtung:statutory carcass washing and knife sterilisation", "proc:zerlegung:hand and equipment hygiene between batches", "proc:qs:hygiene verification and water-quality records"], "acts": ["act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "UV-CO2-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "CO₂ bulk 50 t tank (pig stunning + MAP packing)", "asset_type": "Utility (industrial gas)", "bereich": "gas store", "owner_name": "Dirk Wohlleben", "criticality": 1, "rto": "8 h", "rpo": "n/a (physical)", "mtpd": "Stunning stops on CO₂ loss; tank + second supplier bridge the realistic case", "spof": false, "redundancy": "Second supplier AirTec listed; tank expanded to 50 t (range ≈ 3 slaughter days)", "supplier": "Nordgas Industriegase GmbH (primary) / AirTec Gase AG (second)", "contract_status": "Supply contract CO2-2024-05 (primary Nordgas, second AirTec).", "col": 0, "row": 3, "keep_extra": ["group:processes"], "chain": [], "impact": ["AN-SCHLACHT-01", "LF-ABP-01", "AN-ZERLEG-01"], "procs": ["proc:schlachtung:CO₂ group stunning of pigs", "proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)"], "acts": ["act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "UV-DAMPF-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 2, "name": "Steam/hot water (gas boiler house): scalding 58–62 °C + CIP", "asset_type": "Utility (steam/heat)", "bereich": "boiler house", "owner_name": "Dirk Wohlleben", "criticality": 2, "rto": "8 h", "rpo": "n/a (physical)", "mtpd": "Scalding stops Slaughter; without CIP no hygienic next-day start", "spof": true, "redundancy": "2 gas boilers (DK-01/DK-02, 1+1), but one boiler house (structural SPOF)", "supplier": null, "contract_status": "Self-generation; recurring inspection by an approved inspection body (ZÜS) under the Industrial Safety Ordinance (BetrSichV).", "col": 2, "row": 3, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01", "UV-WASSER-01"], "impact": ["AN-SCHLACHT-01", "LF-ABP-01", "AN-ZERLEG-01"], "procs": ["proc:schlachtung:scalding 58–62 °C before dehairing", "proc:zerlegung:CIP cleaning for a hygienic next-day start"], "acts": ["act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "high"}, {"id": "UV-ABWASSER-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Wastewater treatment plant DAF + biological stage, discharge permit (Waste Water Ordinance (AbwV) Annex 10)", "asset_type": "Utility (wastewater)", "bereich": "wastewater treatment plant", "owner_name": "Uwe Templin", "criticality": 1, "rto": "24 h", "rpo": "n/a (physical)", "mtpd": "Limit exceedance caps production (not an immediate full stop)", "spof": false, "redundancy": "no parallel line; discharge load-limited (cap)", "supplier": "Eigenbetrieb + Vorfluter", "contract_status": "Discharge permit UW-2022-14 (Waste Water Ordinance (AbwV) Annex 10, meat industry).", "col": 1, "row": 3, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01"], "impact": [], "procs": ["proc:schlachtung:wastewater arising from slaughter/scalding", "proc:zerlegung:wastewater/fat arising from cutting/cleaning"], "acts": ["act:Cutting / deboning"], "crit": "critical"}, {"id": "IT-ERP-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 2, "name": "SAP S/4HANA + MES: order, batch (178/2002), scale, label (1169/2011), EDI", "asset_type": "IT system", "bereich": "server room", "owner_name": "Marek Sobotta", "criticality": 1, "rto": "8 h", "rpo": "4 h", "mtpd": "Without ERP no legal label/no release/no dispatch — production runs physically but may not ship (stealth stopper)", "spof": false, "redundancy": "daily backup (RPO 4 h for order data)", "supplier": "Systemhaus Nord IT GmbH", "contract_status": "Support/SLA contract Systemhaus Nord IT IT-2022-04.", "col": 1, "row": 2, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01"], "impact": ["IT-WAAGE-01", "AN-ZERLEG-01"], "procs": ["proc:verpackung:batch/label data at the packing lines", "proc:kuehlung-lager-versand:delivery notes, picking, loading list", "proc:qs:traceability and release", "proc:vertrieb:order/EDI with grocery-retail customers"], "acts": ["act:Cutting / deboning"], "crit": "critical"}, {"id": "IT-WAAGE-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Weighing/labelling/price-marking system", "asset_type": "IT system", "bereich": "Packing / Dispatch", "owner_name": "Marek Sobotta", "criticality": 1, "rto": "8 h", "rpo": "4 h", "mtpd": "Follows IT-ERP-01; without scale/label no legal dispatch", "spof": true, "redundancy": "none standalone — follows IT-ERP-01", "supplier": "Systemhaus Nord IT GmbH", "contract_status": "Covered under IT-2022-04.", "col": 2, "row": 2, "keep_extra": ["group:processes"], "chain": ["IT-ERP-01", "UV-STROM-01"], "impact": ["AN-ZERLEG-01"], "procs": ["proc:verpackung:weighing and price marking of finished packs", "proc:kuehlung-lager-versand:dispatch weighing"], "acts": ["act:Cutting / deboning"], "crit": "critical"}, {"id": "LF-ABP-01", "kind": "asset", "owner_missing": false, "pp4_issue": true, "quality_flag_count": 2, "name": "Category 3 collection of animal by-products (daily)", "asset_type": "Supplier / disposal", "bereich": "ABP dock (Category 3)", "owner_name": "Dr Katrin Sauer", "criticality": 1, "rto": "24 h", "rpo": "n/a (physical)", "mtpd": "Covered area holds hours up to ≈ 1 slaughter day at normal throughput, then the line must slow/stop", "spof": true, "redundancy": "no contractually bound backup renderer", "supplier": "Norddeutsche Tierkörperverwertung GmbH (NTV)", "contract_status": "Primary contract NTV ABP-2023-07 in force; backup renderer open (no contract, no owner).", "col": 3, "row": 0, "keep_extra": ["group:processes"], "chain": ["AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01"], "impact": ["AN-SCHLACHT-01", "AN-ZERLEG-01"], "procs": ["proc:schlachtung:ongoing removal of Category 3 material from the line", "proc:zerlegung:removal of bones and trim from cutting"], "acts": ["act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "LF-SPED-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Refrigerated transport / trunking (own + contract)", "asset_type": "Supplier / logistics", "bereich": "Dispatch / docks", "owner_name": "Sven Hollmann", "criticality": 2, "rto": "24 h", "rpo": "n/a (physical)", "mtpd": "Failure backs up the cold store in ≈ 1 day; OTIF miss looms", "spof": true, "redundancy": "18 own reefer trucks + contract trunking (partly substitutable)", "supplier": "Elbe-Kühllogistik GmbH", "contract_status": "Framework contract Elbe-Kühllogistik SPED-2024-03.", "col": 2, "row": 0, "keep_extra": ["group:processes"], "chain": ["KA-01", "UV-STROM-01"], "impact": [], "procs": ["proc:kuehlung-lager-versand:delivery of finished product in the cold chain", "proc:vertrieb:delivery reliability (OTIF) to grocery retail"], "acts": [], "crit": "high"}, {"id": "LF-VERP-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Packing material + MAP gas (O₂/CO₂/N₂)", "asset_type": "Supplier / material", "bereich": "Packing", "owner_name": "Dr Katrin Sauer", "criticality": 2, "rto": "48 h", "rpo": "n/a (physical)", "mtpd": "Buffer ≈ 3 days; then a packing shortage", "spof": true, "redundancy": "material buffer ≈ 3 days", "supplier": "PackForm Nord GmbH", "contract_status": "Supply contract VP-2023-09; MAP gas partly via the CO₂ contract (CO2-2024-05).", "col": 0, "row": 1, "keep_extra": ["group:processes"], "chain": [], "impact": [], "procs": ["proc:verpackung:packing material and MAP gas at the lines"], "acts": [], "crit": "high"}, {"id": "AN-SCHLACHT-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 1, "name": "Slaughter line: CO₂ stunning, scalding, dehairing, evisceration, EUROP grading", "asset_type": "Plant (production)", "bereich": "Slaughter", "owner_name": "Torsten Ahlgrim", "criticality": 1, "rto": "8 h", "rpo": "n/a (physical)", "mtpd": "Failure stops slaughter; linear flow with no parallel line", "spof": true, "redundancy": "no parallel slaughter line", "supplier": "in-house + external service contract (industrial-grade slaughter line)", "contract_status": "Maintenance in-house + external service contract (no separate framework contract in the register).", "col": 3, "row": 1, "keep_extra": ["group:processes"], "chain": ["UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01", "LF-ABP-01"], "impact": ["LF-ABP-01", "AN-ZERLEG-01"], "procs": ["proc:zerlegung:supply of carcasses into cutting", "proc:kuehlung-lager-versand:carcass chilling after slaughter"], "acts": ["act:Slaughter Process", "act:Cutting / deboning", "act:Slaughter process (stunning → dressing)"], "crit": "critical"}, {"id": "AN-ZERLEG-01", "kind": "asset", "owner_missing": false, "pp4_issue": false, "quality_flag_count": 2, "name": "Cutting line: band saws, deboning, trimming, metal detection", "asset_type": "Plant (production)", "bereich": "Cutting", "owner_name": "Petra Louven", "criticality": 1, "rto": "8 h", "rpo": "n/a (physical)", "mtpd": "Can slaughter but not cut; labour bottleneck = core risk", "spof": true, "redundancy": "limited (several band saws, but labour-bound)", "supplier": "intern + Servicevertrag", "contract_status": "Maintenance in-house + service contract.", "col": 4, "row": 0, "keep_extra": ["group:processes"], "chain": ["AN-SCHLACHT-01", "KA-01", "UV-STROM-01", "IT-WAAGE-01", "PE-ZERLEG-01", "IT-ERP-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "LF-ABP-01"], "impact": [], "procs": ["proc:verpackung:cut parts into packing", "proc:kuehlung-lager-versand:storage/dispatch of cut product", "proc:vertrieb:delivery volume/range for grocery retail"], "acts": ["act:Cutting / deboning"], "crit": "critical"}, {"id": "PE-ZERLEG-01", "kind": "asset", "owner_missing": false, "pp4_issue": true, "quality_flag_count": 2, "name": "Cutting labour pool (minimum staffing 1 shift ≈ 90 cutters)", "asset_type": "Personnel", "bereich": "Cutting", "owner_name": "Petra Louven", "criticality": 1, "rto": "24 h", "rpo": "n/a (physical)", "mtpd": "Understaffing throttles cutting immediately; building up staff takes time", "spof": true, "redundancy": "limited agency-labour reserve (ASKG cap ≈ 8%)", "supplier": "Direct employment + <= 8 % agency", "contract_status": "Direct employment (ASKG 2021); agency labour capped ≈ 8%.", "col": 0, "row": 0, "keep_extra": ["group:processes"], "chain": [], "impact": ["AN-ZERLEG-01"], "procs": ["proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)", "proc:vertrieb:delivery volume depends on cutting throughput"], "acts": ["act:Cutting / deboning"], "crit": "critical"}, {"id": "proc:schlachtung:carcass chilling directly on the line", "kind": "process", "dept": "schlachtung", "activity": "carcass chilling directly on the line", "need": "cooling capacity during slaughter", "consumer_mtpd": null, "col": 6, "row": 12, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["KA-01"], "chain": ["KA-01", "UV-STROM-01"]}, {"id": "proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection", "kind": "process", "dept": "zerlegung", "activity": "chilled cutting room ≤ 12 °C and WIP protection", "need": "room temperature maintained", "consumer_mtpd": "≈ 2–4 h until exposed WIP is at risk (analyst note)", "col": 6, "row": 27, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["KA-01"], "chain": ["KA-01", "UV-STROM-01"]}, {"id": "proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "chilled (+2 °C) and frozen storage (−22 °C)", "need": "chamber temperatures with evidence for release", "consumer_mtpd": "sealed chambers hold for hours; assessment from ≈ 4 h", "col": 6, "row": 3, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["KA-01"], "chain": ["KA-01", "UV-STROM-01"]}, {"id": "proc:qs:temperature evidence for HACCP releases", "kind": "process", "dept": "qs", "activity": "temperature evidence for HACCP releases", "need": "trend data or manual rounds", "consumer_mtpd": null, "col": 6, "row": 9, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["KA-01"], "chain": ["KA-01", "UV-STROM-01"]}, {"id": "proc:kuehlung-lager-versand:blast freezing before frozen storage intake", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "blast freezing before frozen storage intake", "need": "freezer capacity per chilling curve", "consumer_mtpd": "≈ 8 h until frozen supply backs up", "col": 6, "row": 1, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["KA-02"], "chain": ["KA-02", "KA-01", "UV-STROM-01"]}, {"id": "proc:all-departments:every production, chilling, hygiene and administrative activity on site", "kind": "process", "dept": "all-departments", "activity": "every production, chilling, hygiene and administrative activity on site", "need": "grid restored before the tightest area clock opens; NEA bridges only partial loads", "consumer_mtpd": "cold-chain and animal-welfare clocks open within 0–4 h of a site outage (analyst note)", "col": 6, "row": 0, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-STROM-01"], "chain": ["UV-STROM-01"]}, {"id": "proc:schlachtung:statutory carcass washing and knife sterilisation", "kind": "process", "dept": "schlachtung", "activity": "statutory carcass washing and knife sterilisation", "need": "potable water with pressure; without it the line may not run", "consumer_mtpd": null, "col": 6, "row": 15, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-WASSER-01"], "chain": ["UV-WASSER-01", "UV-STROM-01"]}, {"id": "proc:zerlegung:hand and equipment hygiene between batches", "kind": "process", "dept": "zerlegung", "activity": "hand and equipment hygiene between batches", "need": "potable water for hygiene discipline", "consumer_mtpd": null, "col": 6, "row": 28, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-WASSER-01"], "chain": ["UV-WASSER-01", "UV-STROM-01"]}, {"id": "proc:qs:hygiene verification and water-quality records", "kind": "process", "dept": "qs", "activity": "hygiene verification and water-quality records", "need": "sampling points active, evidence for the official veterinarian", "consumer_mtpd": null, "col": 6, "row": 8, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-WASSER-01"], "chain": ["UV-WASSER-01", "UV-STROM-01"]}, {"id": "proc:schlachtung:CO₂ group stunning of pigs", "kind": "process", "dept": "schlachtung", "activity": "CO₂ group stunning of pigs", "need": "stunning gas available; without CO₂ no animal-welfare-compliant stunning", "consumer_mtpd": "≈ 8 h tank reserve before stunning stops", "col": 6, "row": 11, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-CO2-01"], "chain": ["UV-CO2-01"]}, {"id": "proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)", "kind": "process", "dept": "verpackung", "activity": "modified-atmosphere packing (MAP, O₂/CO₂/N₂)", "need": "MAP gas for shelf life", "consumer_mtpd": null, "col": 6, "row": 19, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-CO2-01"], "chain": ["UV-CO2-01"]}, {"id": "proc:schlachtung:scalding 58–62 °C before dehairing", "kind": "process", "dept": "schlachtung", "activity": "scalding 58–62 °C before dehairing", "need": "stable scalding temperature", "consumer_mtpd": null, "col": 6, "row": 14, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-DAMPF-01"], "chain": ["UV-DAMPF-01", "UV-STROM-01", "UV-WASSER-01"]}, {"id": "proc:zerlegung:CIP cleaning for a hygienic next-day start", "kind": "process", "dept": "zerlegung", "activity": "CIP cleaning for a hygienic next-day start", "need": "hot water/steam for cleaning", "consumer_mtpd": "before the cleaning shift; without CIP no next-day start", "col": 6, "row": 26, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-DAMPF-01"], "chain": ["UV-DAMPF-01", "UV-STROM-01", "UV-WASSER-01"]}, {"id": "proc:schlachtung:wastewater arising from slaughter/scalding", "kind": "process", "dept": "schlachtung", "activity": "wastewater arising from slaughter/scalding", "need": "discharge capacity within limits", "consumer_mtpd": "exceedance → production cap (shift throttling)", "col": 6, "row": 16, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-ABWASSER-01"], "chain": ["UV-ABWASSER-01", "UV-STROM-01"]}, {"id": "proc:zerlegung:wastewater/fat arising from cutting/cleaning", "kind": "process", "dept": "zerlegung", "activity": "wastewater/fat arising from cutting/cleaning", "need": "discharge capacity and fat separation", "consumer_mtpd": null, "col": 6, "row": 32, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["UV-ABWASSER-01"], "chain": ["UV-ABWASSER-01", "UV-STROM-01"]}, {"id": "proc:verpackung:batch/label data at the packing lines", "kind": "process", "dept": "verpackung", "activity": "batch/label data at the packing lines", "need": "correct, legal label (Regulation (EU) No 1169/2011)", "consumer_mtpd": "≈ 2 h label fallback with pre-printed forms", "col": 6, "row": 17, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-ERP-01"], "chain": ["IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:kuehlung-lager-versand:delivery notes, picking, loading list", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "delivery notes, picking, loading list", "need": "dispatch documents; manual fallback slow", "consumer_mtpd": null, "col": 6, "row": 4, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-ERP-01"], "chain": ["IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:qs:traceability and release", "kind": "process", "dept": "qs", "activity": "traceability and release", "need": "batch/traceability data (Regulation (EC) No 178/2002)", "consumer_mtpd": null, "col": 6, "row": 10, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-ERP-01"], "chain": ["IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:vertrieb:order/EDI with grocery-retail customers", "kind": "process", "dept": "vertrieb", "activity": "order/EDI with grocery-retail customers", "need": "order and EDI data flow", "consumer_mtpd": null, "col": 6, "row": 25, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-ERP-01"], "chain": ["IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:verpackung:weighing and price marking of finished packs", "kind": "process", "dept": "verpackung", "activity": "weighing and price marking of finished packs", "need": "scale/label online", "consumer_mtpd": "≈ 2 h pre-printed-form fallback", "col": 6, "row": 21, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-WAAGE-01"], "chain": ["IT-WAAGE-01", "IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:kuehlung-lager-versand:dispatch weighing", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "dispatch weighing", "need": "calibrated weighing for loading", "consumer_mtpd": null, "col": 6, "row": 6, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["IT-WAAGE-01"], "chain": ["IT-WAAGE-01", "IT-ERP-01", "UV-STROM-01"]}, {"id": "proc:schlachtung:ongoing removal of Category 3 material from the line", "kind": "process", "dept": "schlachtung", "activity": "ongoing removal of Category 3 material from the line", "need": "container/collection capacity ahead of the slaughter plan; a full ABP area stops the line", "consumer_mtpd": "≈ hours of container buffer at normal throughput → then slaughter stops (analyst note)", "col": 6, "row": 13, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["LF-ABP-01"], "chain": ["LF-ABP-01", "AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01"]}, {"id": "proc:zerlegung:removal of bones and trim from cutting", "kind": "process", "dept": "zerlegung", "activity": "removal of bones and trim from cutting", "need": "collection frequency keeps the area hygienically clear", "consumer_mtpd": null, "col": 6, "row": 30, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["LF-ABP-01"], "chain": ["LF-ABP-01", "AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01"]}, {"id": "proc:kuehlung-lager-versand:delivery of finished product in the cold chain", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "delivery of finished product in the cold chain", "need": "transport capacity; failure backs up the cold store", "consumer_mtpd": "cold store backs up in ≈ 1 day without haulage", "col": 6, "row": 5, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["LF-SPED-01"], "chain": ["LF-SPED-01", "KA-01", "UV-STROM-01"]}, {"id": "proc:vertrieb:delivery reliability (OTIF) to grocery retail", "kind": "process", "dept": "vertrieb", "activity": "delivery reliability (OTIF) to grocery retail", "need": "on-time delivery", "consumer_mtpd": null, "col": 6, "row": 22, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["LF-SPED-01"], "chain": ["LF-SPED-01", "KA-01", "UV-STROM-01"]}, {"id": "proc:verpackung:packing material and MAP gas at the lines", "kind": "process", "dept": "verpackung", "activity": "packing material and MAP gas at the lines", "need": "material/gas resupply", "consumer_mtpd": "≈ 3 days buffer before a material shortage", "col": 6, "row": 20, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["LF-VERP-01"], "chain": ["LF-VERP-01"]}, {"id": "proc:zerlegung:supply of carcasses into cutting", "kind": "process", "dept": "zerlegung", "activity": "supply of carcasses into cutting", "need": "continuous carcass flow", "consumer_mtpd": null, "col": 6, "row": 31, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["AN-SCHLACHT-01"], "chain": ["AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01", "LF-ABP-01"]}, {"id": "proc:kuehlung-lager-versand:carcass chilling after slaughter", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "carcass chilling after slaughter", "need": "cooling capacity at the line", "consumer_mtpd": null, "col": 6, "row": 2, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["AN-SCHLACHT-01"], "chain": ["AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01", "LF-ABP-01"]}, {"id": "proc:verpackung:cut parts into packing", "kind": "process", "dept": "verpackung", "activity": "cut parts into packing", "need": "continuous parts flow", "consumer_mtpd": null, "col": 6, "row": 18, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["AN-ZERLEG-01"], "chain": ["AN-ZERLEG-01", "AN-SCHLACHT-01", "KA-01", "UV-STROM-01", "IT-WAAGE-01", "PE-ZERLEG-01", "IT-ERP-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "LF-ABP-01"]}, {"id": "proc:kuehlung-lager-versand:storage/dispatch of cut product", "kind": "process", "dept": "kuehlung-lager-versand", "activity": "storage/dispatch of cut product", "need": "product for picking", "consumer_mtpd": null, "col": 6, "row": 7, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["AN-ZERLEG-01"], "chain": ["AN-ZERLEG-01", "AN-SCHLACHT-01", "KA-01", "UV-STROM-01", "IT-WAAGE-01", "PE-ZERLEG-01", "IT-ERP-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "LF-ABP-01"]}, {"id": "proc:vertrieb:delivery volume/range for grocery retail", "kind": "process", "dept": "vertrieb", "activity": "delivery volume/range for grocery retail", "need": "cutting capacity covers the order", "consumer_mtpd": null, "col": 6, "row": 24, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["AN-ZERLEG-01"], "chain": ["AN-ZERLEG-01", "AN-SCHLACHT-01", "KA-01", "UV-STROM-01", "IT-WAAGE-01", "PE-ZERLEG-01", "IT-ERP-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "LF-ABP-01"]}, {"id": "proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)", "kind": "process", "dept": "zerlegung", "activity": "minimum staffing 1 shift (≈ 90 cutters)", "need": "qualified staff for cutting throughput", "consumer_mtpd": "falling below minimum staffing throttles/stops cutting", "col": 6, "row": 29, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["PE-ZERLEG-01"], "chain": ["PE-ZERLEG-01"]}, {"id": "proc:vertrieb:delivery volume depends on cutting throughput", "kind": "process", "dept": "vertrieb", "activity": "delivery volume depends on cutting throughput", "need": "throughput covers grocery-retail orders", "consumer_mtpd": null, "col": 6, "row": 23, "collapsed": true, "keep_extra": ["group:processes"], "feeds": ["PE-ZERLEG-01"], "chain": ["PE-ZERLEG-01"]}, {"id": "act:Slaughter Process", "kind": "activity", "name": "Slaughter Process", "owner_name": "Thorsten Ahlgrim", "dept": "schlachtung", "mtpd": "8 h", "recovery_target": "8 h", "col": 5, "row": 1, "chain": ["AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01", "LF-ABP-01"], "dept_acts": ["proc:schlachtung:carcass chilling directly on the line", "proc:schlachtung:statutory carcass washing and knife sterilisation", "proc:schlachtung:CO₂ group stunning of pigs", "proc:schlachtung:scalding 58–62 °C before dehairing", "proc:schlachtung:wastewater arising from slaughter/scalding", "proc:schlachtung:ongoing removal of Category 3 material from the line"]}, {"id": "act:Cutting / deboning", "kind": "activity", "name": "Cutting / deboning", "owner_name": "Petra Louven", "dept": "zerlegung", "mtpd": "8 h", "recovery_target": "8 h", "col": 5, "row": 0, "chain": ["AN-ZERLEG-01", "AN-SCHLACHT-01", "KA-01", "UV-STROM-01", "UV-WASSER-01", "UV-DAMPF-01", "UV-ABWASSER-01", "IT-ERP-01", "IT-WAAGE-01", "PE-ZERLEG-01", "LF-ABP-01", "UV-CO2-01"], "dept_acts": ["proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection", "proc:zerlegung:hand and equipment hygiene between batches", "proc:zerlegung:CIP cleaning for a hygienic next-day start", "proc:zerlegung:wastewater/fat arising from cutting/cleaning", "proc:zerlegung:removal of bones and trim from cutting", "proc:zerlegung:supply of carcasses into cutting", "proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)"]}, {"id": "act:Slaughter process (stunning → dressing)", "kind": "activity", "name": "Slaughter process (stunning → dressing)", "owner_name": "Torsten Ahlgrim", "dept": "schlachtung", "mtpd": "24 h", "recovery_target": "6 h", "col": 5, "row": 2, "chain": ["AN-SCHLACHT-01", "UV-STROM-01", "UV-WASSER-01", "UV-CO2-01", "UV-DAMPF-01", "KA-01", "LF-ABP-01"], "dept_acts": ["proc:schlachtung:carcass chilling directly on the line", "proc:schlachtung:statutory carcass washing and knife sterilisation", "proc:schlachtung:CO₂ group stunning of pigs", "proc:schlachtung:scalding 58–62 °C before dehairing", "proc:schlachtung:wastewater arising from slaughter/scalding", "proc:schlachtung:ongoing removal of Category 3 material from the line"]}, {"id": "group:processes", "kind": "process_group", "name": "33 dependent activities", "dept_count": 7, "procs": ["proc:all-departments:every production, chilling, hygiene and administrative activity on site", "proc:kuehlung-lager-versand:blast freezing before frozen storage intake", "proc:kuehlung-lager-versand:carcass chilling after slaughter", "proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)", "proc:kuehlung-lager-versand:delivery notes, picking, loading list", "proc:kuehlung-lager-versand:delivery of finished product in the cold chain", "proc:kuehlung-lager-versand:dispatch weighing", "proc:kuehlung-lager-versand:storage/dispatch of cut product", "proc:qs:hygiene verification and water-quality records", "proc:qs:temperature evidence for HACCP releases", "proc:qs:traceability and release", "proc:schlachtung:CO₂ group stunning of pigs", "proc:schlachtung:carcass chilling directly on the line", "proc:schlachtung:ongoing removal of Category 3 material from the line", "proc:schlachtung:scalding 58–62 °C before dehairing", "proc:schlachtung:statutory carcass washing and knife sterilisation", "proc:schlachtung:wastewater arising from slaughter/scalding", "proc:verpackung:batch/label data at the packing lines", "proc:verpackung:cut parts into packing", "proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)", "proc:verpackung:packing material and MAP gas at the lines", "proc:verpackung:weighing and price marking of finished packs", "proc:vertrieb:delivery reliability (OTIF) to grocery retail", "proc:vertrieb:delivery volume depends on cutting throughput", "proc:vertrieb:delivery volume/range for grocery retail", "proc:vertrieb:order/EDI with grocery-retail customers", "proc:zerlegung:CIP cleaning for a hygienic next-day start", "proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection", "proc:zerlegung:hand and equipment hygiene between batches", "proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)", "proc:zerlegung:removal of bones and trim from cutting", "proc:zerlegung:supply of carcasses into cutting", "proc:zerlegung:wastewater/fat arising from cutting/cleaning"], "keep_extra": ["AN-SCHLACHT-01", "AN-ZERLEG-01", "IT-ERP-01", "IT-WAAGE-01", "KA-01", "KA-02", "LF-ABP-01", "LF-SPED-01", "LF-VERP-01", "PE-ZERLEG-01", "UV-ABWASSER-01", "UV-CO2-01", "UV-DAMPF-01", "UV-STROM-01", "UV-WASSER-01"], "col": 6, "row": 0}], "edges": [{"src": "KA-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "KA-02", "dst": "KA-01", "kind": "depends_on"}, {"src": "KA-02", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "UV-WASSER-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "UV-DAMPF-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "UV-DAMPF-01", "dst": "UV-WASSER-01", "kind": "depends_on"}, {"src": "UV-ABWASSER-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "IT-ERP-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "IT-WAAGE-01", "dst": "IT-ERP-01", "kind": "depends_on"}, {"src": "IT-WAAGE-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "LF-ABP-01", "dst": "AN-SCHLACHT-01", "kind": "depends_on"}, {"src": "LF-SPED-01", "dst": "KA-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "UV-WASSER-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "UV-CO2-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "UV-DAMPF-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "KA-01", "kind": "depends_on"}, {"src": "AN-SCHLACHT-01", "dst": "LF-ABP-01", "kind": "depends_on"}, {"src": "AN-ZERLEG-01", "dst": "AN-SCHLACHT-01", "kind": "depends_on"}, {"src": "AN-ZERLEG-01", "dst": "KA-01", "kind": "depends_on"}, {"src": "AN-ZERLEG-01", "dst": "UV-STROM-01", "kind": "depends_on"}, {"src": "AN-ZERLEG-01", "dst": "IT-WAAGE-01", "kind": "depends_on"}, {"src": "AN-ZERLEG-01", "dst": "PE-ZERLEG-01", "kind": "depends_on"}, {"src": "KA-01", "dst": "proc:schlachtung:carcass chilling directly on the line", "kind": "consumes"}, {"src": "KA-01", "dst": "proc:zerlegung:chilled cutting room ≤ 12 °C and WIP protection", "kind": "consumes"}, {"src": "KA-01", "dst": "proc:kuehlung-lager-versand:chilled (+2 °C) and frozen storage (−22 °C)", "kind": "consumes"}, {"src": "KA-01", "dst": "proc:qs:temperature evidence for HACCP releases", "kind": "consumes"}, {"src": "KA-02", "dst": "proc:kuehlung-lager-versand:blast freezing before frozen storage intake", "kind": "consumes"}, {"src": "UV-STROM-01", "dst": "proc:all-departments:every production, chilling, hygiene and administrative activity on site", "kind": "consumes"}, {"src": "UV-WASSER-01", "dst": "proc:schlachtung:statutory carcass washing and knife sterilisation", "kind": "consumes"}, {"src": "UV-WASSER-01", "dst": "proc:zerlegung:hand and equipment hygiene between batches", "kind": "consumes"}, {"src": "UV-WASSER-01", "dst": "proc:qs:hygiene verification and water-quality records", "kind": "consumes"}, {"src": "UV-CO2-01", "dst": "proc:schlachtung:CO₂ group stunning of pigs", "kind": "consumes"}, {"src": "UV-CO2-01", "dst": "proc:verpackung:modified-atmosphere packing (MAP, O₂/CO₂/N₂)", "kind": "consumes"}, {"src": "UV-DAMPF-01", "dst": "proc:schlachtung:scalding 58–62 °C before dehairing", "kind": "consumes"}, {"src": "UV-DAMPF-01", "dst": "proc:zerlegung:CIP cleaning for a hygienic next-day start", "kind": "consumes"}, {"src": "UV-ABWASSER-01", "dst": "proc:schlachtung:wastewater arising from slaughter/scalding", "kind": "consumes"}, {"src": "UV-ABWASSER-01", "dst": "proc:zerlegung:wastewater/fat arising from cutting/cleaning", "kind": "consumes"}, {"src": "IT-ERP-01", "dst": "proc:verpackung:batch/label data at the packing lines", "kind": "consumes"}, {"src": "IT-ERP-01", "dst": "proc:kuehlung-lager-versand:delivery notes, picking, loading list", "kind": "consumes"}, {"src": "IT-ERP-01", "dst": "proc:qs:traceability and release", "kind": "consumes"}, {"src": "IT-ERP-01", "dst": "proc:vertrieb:order/EDI with grocery-retail customers", "kind": "consumes"}, {"src": "IT-WAAGE-01", "dst": "proc:verpackung:weighing and price marking of finished packs", "kind": "consumes"}, {"src": "IT-WAAGE-01", "dst": "proc:kuehlung-lager-versand:dispatch weighing", "kind": "consumes"}, {"src": "LF-ABP-01", "dst": "proc:schlachtung:ongoing removal of Category 3 material from the line", "kind": "consumes"}, {"src": "LF-ABP-01", "dst": "proc:zerlegung:removal of bones and trim from cutting", "kind": "consumes"}, {"src": "LF-SPED-01", "dst": "proc:kuehlung-lager-versand:delivery of finished product in the cold chain", "kind": "consumes"}, {"src": "LF-SPED-01", "dst": "proc:vertrieb:delivery reliability (OTIF) to grocery retail", "kind": "consumes"}, {"src": "LF-VERP-01", "dst": "proc:verpackung:packing material and MAP gas at the lines", "kind": "consumes"}, {"src": "AN-SCHLACHT-01", "dst": "proc:zerlegung:supply of carcasses into cutting", "kind": "consumes"}, {"src": "AN-SCHLACHT-01", "dst": "proc:kuehlung-lager-versand:carcass chilling after slaughter", "kind": "consumes"}, {"src": "AN-ZERLEG-01", "dst": "proc:verpackung:cut parts into packing", "kind": "consumes"}, {"src": "AN-ZERLEG-01", "dst": "proc:kuehlung-lager-versand:storage/dispatch of cut product", "kind": "consumes"}, {"src": "AN-ZERLEG-01", "dst": "proc:vertrieb:delivery volume/range for grocery retail", "kind": "consumes"}, {"src": "PE-ZERLEG-01", "dst": "proc:zerlegung:minimum staffing 1 shift (≈ 90 cutters)", "kind": "consumes"}, {"src": "PE-ZERLEG-01", "dst": "proc:vertrieb:delivery volume depends on cutting throughput", "kind": "consumes"}, {"src": "act:Slaughter Process", "dst": "AN-SCHLACHT-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "AN-ZERLEG-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "AN-SCHLACHT-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "KA-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "UV-STROM-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "UV-WASSER-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "UV-DAMPF-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "UV-ABWASSER-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "IT-ERP-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "IT-WAAGE-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "PE-ZERLEG-01", "kind": "activity_dep"}, {"src": "act:Cutting / deboning", "dst": "LF-ABP-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "AN-SCHLACHT-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "UV-STROM-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "UV-WASSER-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "UV-CO2-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "UV-DAMPF-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "KA-01", "kind": "activity_dep"}, {"src": "act:Slaughter process (stunning → dressing)", "dst": "LF-ABP-01", "kind": "activity_dep"}, {"src": "AN-SCHLACHT-01", "dst": "group:processes", "kind": "consumes"}, {"src": "AN-ZERLEG-01", "dst": "group:processes", "kind": "consumes"}, {"src": "IT-ERP-01", "dst": "group:processes", "kind": "consumes"}, {"src": "IT-WAAGE-01", "dst": "group:processes", "kind": "consumes"}, {"src": "KA-01", "dst": "group:processes", "kind": "consumes"}, {"src": "KA-02", "dst": "group:processes", "kind": "consumes"}, {"src": "LF-ABP-01", "dst": "group:processes", "kind": "consumes"}, {"src": "LF-SPED-01", "dst": "group:processes", "kind": "consumes"}, {"src": "LF-VERP-01", "dst": "group:processes", "kind": "consumes"}, {"src": "PE-ZERLEG-01", "dst": "group:processes", "kind": "consumes"}, {"src": "UV-ABWASSER-01", "dst": "group:processes", "kind": "consumes"}, {"src": "UV-CO2-01", "dst": "group:processes", "kind": "consumes"}, {"src": "UV-DAMPF-01", "dst": "group:processes", "kind": "consumes"}, {"src": "UV-STROM-01", "dst": "group:processes", "kind": "consumes"}, {"src": "UV-WASSER-01", "dst": "group:processes", "kind": "consumes"}]}</script>
+<script>
+/* Lens engine (D1/D2/D6). Exactly one lens is active at a time — replace semantics, never
+   composed: lens.type is 'none' | 'focus' (node id) | 'owner' (owner_name) | 'crit'
+   (canonical level) | 'flag' (a boolean property, see FLAGS). Every keep-set reads the
+   Python-precomputed island id-lists; this file derives no edges and re-maps no vocabulary. */
+var data = JSON.parse(document.getElementById('data-graph').textContent);
+var byId = Object.create(null);
+data.nodes.forEach(function (n) { byId[n.id] = n; });
+var facts = document.getElementById('facts');
+var chips = document.querySelectorAll('.chip');
+var lens = {type: 'none', value: null};
+var groupSub0 = null;  // the server-rendered group subtitle, captured before the first rewrite
+
+/* Property lenses — one row per boolean the register already carries. Python derives both
+   flags (D6); a row only names the island field to test and the panel heading to print, so
+   a new property chip is markup plus a row here, never a new branch in the engine. */
+var FLAGS = {spof: {field: 'spof', title: 'Single points of failure'},
+             unowned: {field: 'owner_missing', title: 'Unowned assets'}};
+
+function flagOf(name) { return FLAGS[name] || {}; }  // unknown name = a stale hash, matches nothing
+
+function chipLens(c) {  // a chip is a preset lens; its data attribute says which one
+  return c.dataset.crit ? {type: 'crit', value: c.dataset.crit}
+                        : {type: 'flag', value: c.dataset.flag};
+}
+
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== null && text !== undefined) e.textContent = String(text);
+  return e;
+}
+
+function press(type, value, text) {
+  var b = el('button', 'linklike', text);
+  b.type = 'button'; b.dataset.lens = type; b.dataset.value = value;
+  return b;
+}
+
+function parts(n) {  // [primary, secondary] — mirrors the node card's name/sub pair
+  if (n.kind === 'process') return [n.activity || n.id, n.dept];
+  return [n.name || n.id, n.id];
+}
+
+function row(key, value) {
+  if (value === null || value === undefined || value === '') return null;
+  var tr = el('tr');
+  tr.appendChild(el('td', null, key));
+  var td = el('td');
+  if (value.nodeType) td.appendChild(value); else td.textContent = String(value);
+  tr.appendChild(td);
+  return tr;
+}
+
+function table(rows) {
+  var t = el('table');
+  rows.forEach(function (r) { if (r) t.appendChild(r); });
+  facts.appendChild(t);
+}
+
+function section(title, ids) {  // every entry presses through to focus(id)
+  facts.appendChild(el('h3', null, title + ' (' + ids.length + ')'));
+  if (!ids.length) { facts.appendChild(el('p', 'hint', 'None recorded.')); return; }
+  var ul = el('ul');
+  ids.forEach(function (id) {
+    var p = parts(byId[id] || {id: id});          // id/dept first, then the long name:
+    var li = el('li');                            // one scannable line per entry
+    if (p[1] && p[1] !== p[0]) li.appendChild(el('span', 'mut', p[1] + ' ·'));
+    var b = press('focus', id, p[0]);
+    b.title = p[0];                               // CSS ellipsis never hides the full name
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+  facts.appendChild(ul);
+}
+
+function ownerCell(n) {  // the owner value is pressable wherever it appears
+  return n.owner_name ? press('owner', n.owner_name, n.owner_name)
+                      : el('span', 'badge warn', 'OWNER MISSING');
+}
+
+function nodeFacts(n) {
+  facts.appendChild(el('h2', null, parts(n)[0]));
+  if (n.kind === 'asset') {
+    var raw = n.criticality;
+    var crit = (raw === null || raw === undefined || raw === '') ? 'unrated'
+      : (String(raw) === n.crit ? n.crit : n.crit + ' (register: ' + raw + ')');
+    // Register prose does not get a method term for a label. method.json defines MTPD as
+    // one of six time horizons and ISO 22301 gives it to an ACTIVITY, not a resource; the
+    // register's `mtpd` is a sentence on all 15 assets. The register's `rto` is asserted,
+    // not derived from any grid, so it says so. Both stay under their real names on the
+    // record's own activity, where the values genuinely are the method's.
+    table([row('Asset id', n.id), row('Type', n.asset_type), row('Owner', ownerCell(n)),
+           row('Criticality', crit), row('RTO (stated)', n.rto), row('RPO', n.rpo),
+           row('Impact of loss', n.mtpd),
+           row('SPOF', n.spof ? el('span', 'badge bad', 'SPOF') : 'no'),
+           row('Redundancy', n.redundancy), row('Supplier', n.supplier),
+           row('Contract', n.contract_status),
+           row('Quality flags', n.quality_flag_count || 0),
+           row('PP4 issue', n.pp4_issue ? 'yes' : 'no')]);
+    section('Depends on', n.chain || []);
+    section('Dependents', n.impact || []);
+    section('Dependent activities', n.procs || []);
+  } else if (n.kind === 'process') {
+    table([row('Department', n.dept), row('Activity', n.activity), row('Need', n.need),
+           row('MTPD without this asset', n.consumer_mtpd)]);
+    section('Depends on', n.feeds || []);  // depth 1: the assets feeding this process
+  } else if (n.kind === 'process_group') {
+    // Variant B's aggregate card: the drill-down home for the collapsed consumers.
+    // `procs` is the same field an asset's Consumers section reads, so section() gives
+    // every entry the standard press-through to that process's own facts.
+    table([row('Dependent activities', (n.procs || []).length),
+           row('Departments', n.dept_count)]);
+    section('Dependent activities', n.procs || []);
+  } else if (n.kind === 'activity') {
+    table([row('Record id', n.id), row('Department', n.dept), row('Owner', ownerCell(n)),
+           row('Recovery target', n.recovery_target), row('MTPD', n.mtpd)]);
+    section('Depends on', n.chain || []);
+    // The register's own lines for this activity's department — the same operation
+    // written once per resource it needs. A rollup, so it lives here and lights nothing
+    // on the canvas: dept_acts is deliberately absent from keepSet's tuple.
+    if (n.dept) section('Dependent activities in ' + n.dept, n.dept_acts || []);
+  } else {
+    facts.appendChild(el('p', 'hint', 'Not in the register — unmodeled dependency '
+                                      + '(a BIA finding, not an error).'));
+    section('Dependents', n.impact || []);
+  }
+  if ((n.acts || []).length) section('BIA run overlay', n.acts);
+}
+
+function match(n, l) {  // owner lens = any node with that owner; crit and flag lenses read
+  l = l || lens;        // fields only assets carry, so both are asset-only by construction
+  return l.type === 'flag' ? !!n[flagOf(l.value).field]
+       : l.type === 'owner' ? n.owner_name === l.value
+       : n.crit === l.value;
+}
+
+function fillFacts() {
+  facts.textContent = '';
+  if (lens.type === 'focus' && byId[lens.value]) { nodeFacts(byId[lens.value]); return; }
+  if (lens.type === 'owner' || lens.type === 'crit' || lens.type === 'flag') {
+    var own = lens.type === 'owner';
+    facts.appendChild(el('h2', null, lens.type === 'flag' ? flagOf(lens.value).title
+                                     : (own ? 'Owner: ' : 'Criticality: ') + lens.value));
+    // match is wrapped, never passed to filter bare: filter calls back with (element, index,
+    // array), so the index would land in match's optional lens argument — and every index but
+    // 0 is a truthy Number whose .type/.value are undefined, quietly matching every process.
+    section(own ? 'Owns' : 'Assets',
+            data.nodes.filter(function (n) { return match(n); })
+                      .map(function (n) { return n.id; }));
+    return;
+  }
+  facts.appendChild(el('h2', null, 'Facts'));
+  facts.appendChild(el('p', 'hint', 'Select a node to see what it depends on and what '
+    + 'depends on it. Chips filter by criticality or by property; an owner name lights up '
+    + 'everything that person owns.'));
+}
+
+function keepSet() {  // null = no lens, keep everything
+  if (lens.type === 'none') return null;
+  var keep = Object.create(null);
+  if (lens.type !== 'focus') {
+    data.nodes.forEach(function (n) { if (match(n)) keep[n.id] = true; });
+    return keep;
+  }
+  var n = byId[lens.value];
+  if (!n) return null;
+  keep[n.id] = true;
+  ['chain', 'impact', 'procs', 'acts', 'keep_extra'].forEach(function (k) {
+    (n[k] || []).forEach(function (id) { keep[id] = true; });
+  });
+  return keep;
+}
+
+function applyLens() {
+  var keep = keepSet();
+  document.querySelectorAll('.node').forEach(function (e) {
+    e.classList.toggle('dim', !!keep && !keep[e.dataset.id]);
+    e.classList.toggle('focused', lens.type === 'focus' && e.dataset.id === lens.value);
+  });
+  document.querySelectorAll('.edge').forEach(function (e) {
+    var on = !keep || !!(keep[e.dataset.src] && keep[e.dataset.dst]);
+    e.classList.toggle('dim', !on);
+    e.classList.toggle('hot', on && lens.type === 'focus');
+  });
+  // The group card stands in for the whole consumer band, so it must answer the click too:
+  // a fixed "N departments · select for the list" made every selection look identical (KG's
+  // second live review). Counted off the same keep set that dims, never a second walk.
+  // Capture-before-rewrite is safe on a deep-linked page: the first applyLens() reads the
+  // server-rendered line before anything has overwritten it.
+  var gsub = document.querySelector('[data-id="group:processes"] text.sub');
+  if (gsub) {
+    if (groupSub0 === null) groupSub0 = gsub.textContent;
+    var grp = byId['group:processes'];
+    // Non-focus lenses (crit/owner/flag chips) and the group's own focus say nothing about
+    // a single selection's consumers, so both restore the server-rendered line.
+    // The count line is a noun phrase on purpose (KG's copy ruling, 2026-07-31): "1 of 33
+    // serve" is ungrammatical and m === 1 is common — every single-consumer asset, and every
+    // focused process, which keeps only itself. No verb, so one string reads right at any m.
+    if (grp && keep && lens.type === 'focus' && lens.value !== 'group:processes') {
+      var m = (grp.procs || []).filter(function (id) { return keep[id]; }).length;
+      gsub.textContent = m + ' of ' + (grp.procs || []).length + ' in this selection';
+    } else {
+      gsub.textContent = groupSub0;
+    }
+  }
+  chips.forEach(function (c) {
+    var cl = chipLens(c);
+    c.setAttribute('aria-pressed',
+      lens.type === cl.type && lens.value === cl.value ? 'true' : 'false');
+  });
+  // The fold (variant B): a kept folded card unfolds the consumer band, and the band
+  // repacks around whatever survived. Derived from the same keep set that dims —
+  // presentation state, never a second engine. The body class flips the svg's CSS
+  // aspect and repack() rewrites it, so the view re-fits before the reveal pans.
+  // Filtered off FOLDED, never off a fresh query: FOLDED is in the band's own slot order
+  // (dept-sorted), so the survivors stack in the order the band promises.
+  var open = FOLDED.filter(function (f) { return !!(keep && keep[f.el.dataset.id]); })
+                   .map(function (f) { return f.el; });
+  var wasUnfolded = document.body.classList.contains('unfolded');
+  document.body.classList.toggle('unfolded', open.length > 0);
+  var refit = repack(open);
+  if (refit || (open.length > 0) !== wasUnfolded) resetView();
+  revealFocused();  // the lens layer's reach into the view: reveal, plus re-fit on fold
+  fillFacts();
+}
+
+function writeHash() {
+  var h = lens.type === 'focus' ? '#' + encodeURIComponent(lens.value)
+        : lens.type === 'owner' ? '#owner:' + encodeURIComponent(lens.value)
+        : lens.type === 'crit' ? '#crit:' + lens.value
+        : lens.type === 'flag' ? '#flag:' + lens.value : '';
+  // file:// documents have an opaque origin and reject replaceState — lens still applies.
+  try { history.replaceState(null, '', h || location.pathname + location.search); }
+  catch (err) { /* deep links keep working over http */ }
+}
+
+function setLens(type, value) {
+  lens = {type: type, value: value === undefined ? null : value};
+  applyLens();
+  writeHash();
+}
+
+function readHash() {
+  var raw = (location.hash || '').slice(1);
+  var s = raw;
+  try { s = decodeURIComponent(raw); } catch (err) { s = raw; }
+  if (byId[s]) return {type: 'focus', value: s};  // node ids carry colons — match first
+  var l = s.indexOf('owner:') === 0 ? {type: 'owner', value: s.slice(6)}
+        : s.indexOf('crit:') === 0 ? {type: 'crit', value: s.slice(5)}
+        : s.indexOf('flag:') === 0 ? {type: 'flag', value: s.slice(5)} : null;
+  // A stale link — an owner who left, a mistyped level — used to dim every node behind an
+  // empty panel, which reads as a broken page. Membership is checked against the island,
+  // so the criticality vocabulary still lives in Python and nowhere else. The accepted
+  // cost: a valid-but-empty lens (#crit:standard with zero standard assets) fails the same
+  // membership test, so on reload it degrades to the base view instead of round-tripping —
+  // telling it apart from a mistyped level would mean copying the vocabulary in here.
+  if (l && data.nodes.some(function (n) { return match(n, l); })) return l;
+  return {type: 'none', value: null};
+}
+
+function pulseFocused() {  // deep-link arrival: point at the node the hash landed on
+  var prev = document.querySelector('.node.pulse');
+  // the reflow is what lets the same node pulse again on a repeat hash load
+  if (prev) { prev.classList.remove('pulse'); void prev.getBoundingClientRect(); }
+  var e = document.querySelector('.node.focused');
+  if (e) e.classList.add('pulse');
+}
+
+/* Pan/zoom (D4) — direct manipulation of the svg viewBox. Nothing below touches the lens,
+   and the lens layer's reach in here is revealFocused() plus a resetView() re-fit when
+   the fold state changes the element's aspect. #canvas is overflow:hidden,
+   so panning replaces canvas scrolling rather than doubling it. Scaling is always uniform, so the
+   viewBox keeps its shape and the svg element never changes size or reflows the page. */
+var svg = document.querySelector('#canvas svg');
+
+/* The fold band's repack (KG 2026-07-31). Python authors the whole two-column band, and
+   through 2026-07-31 a card kept its authored slot: a three-consumer selection then left
+   two cards stranded rows apart while the canvas still reserved all 33 rows — "huge gaps
+   ANY frontend designer would immediately flag". So the lens now picks WHICH authored
+   slots get used, the group card's own column first, and re-fits the canvas to what is
+   actually open. Python still owns every slot; this only chooses among them.
+   It sits here because the aspect var it rewrites lives on the svg element above.
+   The cost, paid deliberately: a moved card drags its edge, so route() is the one place
+   this file owns geometry. It is _edge_svg's curve and the tests pin both sides. */
+var FOLDED = [];                  // the band's cards, sorted into its own slot order
+var BOX = Object.create(null);    // node id -> its box RIGHT NOW; only folded cards move
+document.querySelectorAll('.node').forEach(function (e) {
+  var r = e.querySelector('rect.box');
+  if (!r) return;
+  var b = {x: +r.getAttribute('x'), y: +r.getAttribute('y'),
+           w: +r.getAttribute('width'), h: +r.getAttribute('height')};
+  BOX[e.dataset.id] = b;
+  if (e.classList.contains('folded')) FOLDED.push({el: e, home: b});
+});
+// Sorted by position, NOT left in document order: the cards ship in graph["nodes"] order
+// while _geometry hands out slots in dept order, so slot i and card i are different cards
+// and an unsorted repack scattered the survivors instead of stacking them. Column-major
+// (x then y) is exactly the order _geometry filled the band in.
+FOLDED.sort(function (a, b) { return a.home.x - b.home.x || a.home.y - b.home.y; });
+var SLOTS = FOLDED.map(function (f) { return f.home; });
+// The band's right-hand column IS the group card's column (pinned in test_dep_graph), so
+// a selection that fits inside it stacks directly under the card it unfolded from, and
+// never under the "BIA activities" header the band's left column inherits.
+var BAND_X = SLOTS.length ? Math.max.apply(null, SLOTS.map(function (s) { return s.x; })) : 0;
+var RIGHT = SLOTS.filter(function (s) { return s.x === BAND_X; });
+// Python's two ratios carry every height number in play: --ar-folded is the floor (the
+// asset block, which never moves) and --ar-unfolded less the full band's bottom is the
+// gutter. Neither _MARGIN nor the row pitch is re-derived in here.
+var AR = (svg.style.getPropertyValue('--ar-unfolded') || '/').trim().split('/');
+var FLOOR_H = +(svg.style.getPropertyValue('--ar-folded') || '/').split('/')[1];
+var PAD = +AR[1] - Math.max.apply(null, SLOTS.map(function (s) { return s.y + s.h; }));
+
+function route(a, b) {  // mirrors _edge_svg: same three branches, same control offsets
+  var ya = a.y + Math.floor(a.h / 2), yb = b.y + Math.floor(b.h / 2);
+  if (b.x < a.x)
+    return 'M' + a.x + ',' + ya + ' C' + (a.x - 60) + ',' + ya
+         + ' ' + (b.x + b.w + 60) + ',' + yb + ' ' + (b.x + b.w) + ',' + yb;
+  if (b.x > a.x)
+    return 'M' + (a.x + a.w) + ',' + ya + ' C' + (a.x + a.w + 60) + ',' + ya
+         + ' ' + (b.x - 60) + ',' + yb + ' ' + b.x + ',' + yb;
+  return 'M' + (a.x + a.w) + ',' + ya + ' C' + (a.x + a.w + 70) + ',' + ya
+       + ' ' + (b.x + b.w + 70) + ',' + yb + ' ' + (b.x + b.w) + ',' + yb;
+}
+
+function repack(open) {  // -> true when the aspect changed and the view has to re-fit
+  if (!SLOTS.length) return false;
+  var slots = open.length <= RIGHT.length ? RIGHT : SLOTS;
+  FOLDED.forEach(function (f) {  // everything goes home first, so BOX never lies
+    f.el.removeAttribute('transform');
+    BOX[f.el.dataset.id] = f.home;
+  });
+  open.forEach(function (e, i) {
+    var s = slots[i], home = BOX[e.dataset.id];
+    if (s.x === home.x && s.y === home.y) return;
+    e.setAttribute('transform',
+                   'translate(' + (s.x - home.x) + ',' + (s.y - home.y) + ')');
+    BOX[e.dataset.id] = {x: s.x, y: s.y, w: home.w, h: home.h};
+  });
+  // A card moved, so its edge has to be re-drawn from the live boxes — the baked `d`
+  // still points at the slot it left. Only to-folded edges can have a moved endpoint;
+  // the bundled fan ends at the group card, which is not folded and never moves.
+  document.querySelectorAll('.edge.to-folded').forEach(function (p) {
+    var a = BOX[p.dataset.src], b = BOX[p.dataset.dst];
+    if (a && b) p.setAttribute('d', route(a, b));
+  });
+  var bottom = 0;
+  open.forEach(function (e) {
+    var b = BOX[e.dataset.id];
+    if (b.y + b.h > bottom) bottom = b.y + b.h;
+  });
+  var want = AR[0] + '/' + Math.max(FLOOR_H, bottom + PAD);
+  if (svg.style.getPropertyValue('--ar-unfolded').trim() === want) return false;
+  svg.style.setProperty('--ar-unfolded', want);
+  return true;
+}
+
+var fit, view;                   // fit = the home viewBox; view = what is on screen right now
+var ptrs = Object.create(null);  // pointers that went down on the canvas: 1 = drag, 2 = pinch
+var down = null;                 // where the current pointer went down, in client px
+var grab = null;                 // the user-space point held under a dragging pointer
+var spread = 0;                  // last two-pointer distance
+var moved = false;               // travel passed 5 px — this gesture is a drag, not a click
+
+/* The graph can never be dragged or zoomed out of its own window. Panning used to mutate
+   view.x/view.y unbounded: from the fit view one ordinary 200px drag took view.y to -270 and
+   the nodes fully in view from 20 to 7, i.e. the reader threw the graph off screen with a
+   gesture they had every reason to try, and the only way back was a Reset view button
+   nothing points them at (KG 2026-07-31, measured on the live page).
+
+   `fit` is the content extent (see homeView), so it is also the pan boundary. Larger view
+   than content = nothing to pan to, so centre it; smaller = keep the view rect inside the
+   content rect. Living in draw() is the point: pan, zoomAt, resetView and revealFocused all
+   already funnel through it, so this is one guard rather than four call sites that can each
+   forget it. */
+function clampView() {
+  if (!fit) return;  // pre-boot draw: nothing to clamp against yet
+  // Bounded by fit's RECT, not by 0,0 — homeView centres the content inside a grown viewBox,
+  // so fit.x/fit.y are negative and hardcoding the origin would clamp that centring straight
+  // back out and re-pin the graph to the top-left.
+  view.x = view.w >= fit.w ? fit.x + (fit.w - view.w) / 2
+                           : Math.min(Math.max(view.x, fit.x), fit.x + fit.w - view.w);
+  view.y = view.h >= fit.h ? fit.y + (fit.h - view.h) / 2
+                           : Math.min(Math.max(view.y, fit.y), fit.y + fit.h - view.h);
+}
+
+function draw() {
+  clampView();
+  svg.setAttribute('viewBox', view.x + ' ' + view.y + ' ' + view.w + ' ' + view.h);
+}
+
+function at(cx, cy) {  // client px → user units, exact under any preserveAspectRatio fit
+  return new DOMPoint(cx, cy).matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// The home view is the graph fitted to the canvas width, top-left anchored — the framing the
+// page has always opened with, never magnified past 1:1. From there the 0.5x zoom floor brings
+// the whole graph into view and the 4x ceiling reads any label.
+function homeView() {  // the authored content extent, never the measured element box
+  // The --ar-* pair is Python's own record of how tall the content actually is in each fold
+  // state, so it IS the home view. Measuring the element instead (b.height/b.width) looked
+  // equivalent and was not: `max-height` caps the element, and a capped box yielded a home
+  // viewBox SHORTER than the content — 699 against a content bottom of 1044 at 2000x900 with
+  // the band open, i.e. 345 units of graph outside the home view with no way to reach them,
+  // because Reset view restores exactly this wrong rectangle (KG 2026-07-31, measured).
+  // Letting the viewBox state the truth lets preserveAspectRatio letterbox the difference,
+  // which shows less-large rather than less-graph.
+  var w = svg.width.baseVal.value;
+  var ar = (document.body.classList.contains('unfolded')
+              ? svg.style.getPropertyValue('--ar-unfolded')
+              : svg.style.getPropertyValue('--ar-folded')) || '';
+  var parts = ar.split('/');
+  var h = (parts.length === 2 && +parts[0] && +parts[1])
+            ? w * (+parts[1]) / (+parts[0])
+            : svg.height.baseVal.value;  // no fold band on this page: attribute aspect stands
+  // Grow — never shrink — to the element's shape. The element no longer carries the graph's
+  // aspect, so a viewBox left at the bare content extent would be letterboxed and the spare
+  // height wasted exactly as before. Matching the element's ratio spends that height on
+  // viewBox area instead, which is what a zoomed-in reader actually pans around in. Only ever
+  // enlarging is the safety property: it can add empty margin, it can never crop the graph —
+  // the failure mode of the earlier home-view fix, which cropped 345 units.
+  var cw = w, ch = h;  // the content extent, before any growing
+  var b = svg.getBoundingClientRect();
+  if (b.width > 0 && b.height > 0) {
+    h = Math.max(h, w * b.height / b.width);
+    w = Math.max(w, h * b.width / b.height);
+  }
+  // Centre the content in whatever was grown. Top-aligning was tried and measured worse on
+  // the thing this change exists to fix: zooming four notches at the pointer left 8 of 20
+  // nodes on screen top-aligned versus 20 of 20 centred, at identical magnification (cards
+  // 0.74x -> 1.30x either way). Centred, the grown margin absorbs the zoom instead of the
+  // graph walking off the top edge. The cost is a margin above the graph at rest, which is
+  // simply what a 4.14:1 graph looks like in a 1.7:1 window — the window is bigger than the
+  // graph, and that is the point.
+  // cw/ch ride along so zoomAt and clampView know where the CONTENT ends and margin begins.
+  return {x: -(w - cw) / 2, y: -(h - ch) / 2, w: w, h: h, cw: cw, ch: ch};
+}
+
+function resetView() {  // recomputed rather than stored, so it re-fits after a window resize
+  fit = homeView();
+  view = {x: fit.x, y: fit.y, w: fit.w, h: fit.h};
+  draw();
+}
+
+function zoomAt(cx, cy, k) {  // cursor-anchored: the point under (cx, cy) stays put
+  var w = Math.min(Math.max(view.w * k, fit.w / 4), fit.w * 2);  // [0.5x, 4x] of the fit scale
+  var p = at(cx, cy);
+  // Never anchor a zoom on empty margin. The viewBox is grown to the window's shape, so on a
+  // tall window most of it is blank space below the graph — and the pointer sits mid-window
+  // by default. Anchoring out there walked the graph off the top edge on the first zoom.
+  // Pulling the anchor back onto the content keeps the zoom centred on something real.
+  if (fit.cw) p.x = Math.min(Math.max(p.x, 0), fit.cw);
+  if (fit.ch) p.y = Math.min(Math.max(p.y, 0), fit.ch);
+  k = w / view.w;                      // clamped, so the anchor math uses what we really did
+  view.x = p.x - (p.x - view.x) * k;
+  view.y = p.y - (p.y - view.y) * k;
+  view.w = w;
+  view.h *= k;
+  draw();
+}
+
+svg.addEventListener('wheel', function (e) {
+  // Plain wheel scrolls the PAGE, same as over any other element (KG 2026-07-31): the
+  // canvas used to swallow every tick as a zoom, which reads as an ordinary scroll the
+  // moment the cursor happens to be over the graph — and it sits higher on the page now
+  // that the legend/footer fold moved out from above it, so it is the thing under the
+  // cursor far more often. An unmodified scroll silently panned/zoomed away from the fit
+  // view with no warning. Ctrl/Cmd+wheel still zooms: the modifier every mainstream
+  // pan/zoom canvas already uses (Figma, Maps, VS Code's minimap), and the one Chrome
+  // itself sets on the wheel event it synthesizes for a trackpad pinch, so pinch-to-zoom
+  // keeps working — same gesture, same code path, no separate case to maintain.
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();  // only past the gate does the canvas own the gesture
+  if (!e.deltaY) return;  // shift+wheel and sideways trackpad swipes are not a zoom-in
+  zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1.15 : 1 / 1.15);
+}, {passive: false});
+
+// Travel is measured on the document, not the svg, so a drag that starts on a chip or in the
+// facts panel suppresses its click too. Capture is taken only once a gesture is a real drag:
+// a plain click never captures, so it still lands on the element it started on.
+document.addEventListener('pointerdown', function (e) {
+  down = {x: e.clientX, y: e.clientY};
+  moved = false;
+  if (!svg.contains(e.target)) return;  // a gesture off the canvas is gated, never panned
+  ptrs[e.pointerId] = {x: e.clientX, y: e.clientY};
+  grab = at(e.clientX, e.clientY);
+  spread = 0;
+});
+
+document.addEventListener('pointermove', function (e) {
+  if (!down || !e.buttons) return;
+  var p = ptrs[e.pointerId];
+  if (!moved) {
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5) return;  // still a click
+    moved = true;
+    if (p) { svg.setPointerCapture(e.pointerId); svg.classList.add('grabbing'); }
+  }
+  if (!p) return;  // gesture started off the canvas: gated the click, nothing to pan
+  p.x = e.clientX;
+  p.y = e.clientY;
+  var ids = Object.keys(ptrs);
+  if (ids.length > 1) {  // two pointers pinch about their midpoint; one pointer pans
+    var a = ptrs[ids[0]], b = ptrs[ids[1]];
+    var d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (spread && d) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, spread / d);
+    spread = d;
+    return;
+  }
+  var u = at(e.clientX, e.clientY);  // hold the grabbed point under the pointer
+  view.x -= u.x - grab.x;
+  view.y -= u.y - grab.y;
+  draw();
+});
+
+function endPointer(e) {
+  delete ptrs[e.pointerId];
+  spread = 0;
+  var rest = Object.keys(ptrs)[0];
+  if (rest) grab = at(ptrs[rest].x, ptrs[rest].y);  // pinch → one-finger drag, without a jump
+  else svg.classList.remove('grabbing');
+}
+// On the document, not the svg: a gesture that stayed under the 5 px gate never captured,
+// so a pointer lifted just past the svg edge delivered its pointerup somewhere else
+// entirely — the stale ptrs entry then made the next touch look like a pinch.
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (t) {
+  document.addEventListener(t, endPointer);
+});
+resetView();  // boot: draw the home view
+
+function revealFocused() {  // pan the least that brings the focused node fully into view
+  var e = document.querySelector('.node.focused');
+  var box = e && BOX[e.dataset.id];  // the repacked box — the card's own rect attributes
+  if (!box) return;                  // still name the slot a repack has just moved it off
+  var p = 24;  // the page's own gutter: a revealed card is never flush against an edge
+  var x = box.x - p, y = box.y - p;
+  var w = box.w + 2 * p, h = box.h + 2 * p;
+  view.x = Math.min(Math.max(view.x, x + w - view.w), x);  // already framed = no move at all
+  view.y = Math.min(Math.max(view.y, y + h - view.h), y);
+  draw();
+}
+
+function onClick(ev) {  // one entry point for every click on the page
+  if (moved) { moved = false; return; }  // the tail of a drag is not a click
+  var t = ev.target;
+  if (!t || !t.closest) return;
+  if (t.closest('#reset-view')) { resetView(); return; }  // view control, never the lens
+  var chip = t.closest('.chip');
+  if (chip) {
+    var cl = chipLens(chip);
+    var off = lens.type === cl.type && lens.value === cl.value;  // re-click clears
+    setLens(off ? 'none' : cl.type, off ? null : cl.value);
+    return;
+  }
+  var btn = t.closest('[data-lens]');
+  if (btn) { setLens(btn.dataset.lens, btn.dataset.value); return; }
+  var node = t.closest('.node');
+  if (node) { setLens('focus', node.dataset.id); return; }
+  // A background click clears, but the provenance band is chrome, not canvas — the same
+  // reason #toolbar is exempt. Its <summary> is a control the reader is meant to press, and
+  // #evidence now sits inside it; pressing either used to throw away the lens they had just
+  // set. Exempting the band leaves the native <details> toggle untouched.
+  if (!t.closest('#facts, #toolbar, details.provenance')) setLens('none');
+}
+
+document.addEventListener('click', onClick);
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') { setLens('none'); return; }
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var node = e.target && e.target.closest ? e.target.closest('.node') : null;
+  if (node) { e.preventDefault(); setLens('focus', node.dataset.id); }
+});
+window.addEventListener('hashchange', function () {
+  lens = readHash();
+  applyLens();
+  pulseFocused();
+});
+lens = readHash();
+applyLens();
+pulseFocused();
+</script>
+</body>
+</html>
