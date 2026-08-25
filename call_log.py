@@ -122,17 +122,10 @@ def _record(fn, kw, res, t0) -> None:
 
 
 def logged(fn):
-    """Wrap an @mcp.tool function (sync or async); FastMCP calls tools with kwargs, and
-    functools.wraps keeps the signature it reads for the tool schema."""
-    if inspect.iscoroutinefunction(fn):
-        @functools.wraps(fn)
-        async def aw(*a, **kw):
-            t0 = time.time()
-            res = await fn(*a, **kw)
-            _record(fn, kw, res, t0)
-            return res
-        return aw
-
+    """Wrap an @mcp.tool function; FastMCP calls tools with kwargs, and functools.wraps keeps
+    the signature it reads for the tool schema. Sync only: every registered tool is a plain
+    def (asserted by test_every_logged_tool_is_sync), so the async branch this carried until
+    2026-08-24 had never wrapped anything."""
     @functools.wraps(fn)
     def w(*a, **kw):
         t0 = time.time()

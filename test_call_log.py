@@ -138,3 +138,25 @@ def test_a_call_with_no_context_carries_no_conversation_id(tmp_path, monkeypatch
     list_company_files(company="marschkamp")
     row = json.loads(list(tmp_path.glob("calls-*.jsonl"))[0].read_text().splitlines()[0])
     assert "conv" not in row
+
+
+def test_every_logged_tool_is_sync():
+    """`logged` carried an async branch until 2026-08-24 that had never wrapped anything —
+    all 14 registered tools are plain defs. Removing it is only safe while that stays true:
+    an `async def` tool would silently lose its call-log row, and the call log is the only
+    evidence layer this product has for what the agent actually did. Regression pin, not a
+    red-green cycle — it passed on arrival, which is the point."""
+    import ast
+    import inspect as _inspect
+    import pathlib
+
+    src = pathlib.Path(__file__).with_name("server.py").read_text(encoding="utf-8")
+    tools = [n for n in ast.walk(ast.parse(src))
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+             and any("logged" in ast.dump(d) for d in n.decorator_list)]
+    assert tools, "no @call_log.logged tools found — the scan broke, not the server"
+    offenders = [n.name for n in tools if isinstance(n, ast.AsyncFunctionDef)]
+    assert not offenders, (
+        f"async tool(s) {offenders} would not be logged — call_log.logged is sync-only since "
+        "2026-08-24; restore the async branch in the same commit that adds an async tool")
+    assert not _inspect.iscoroutinefunction(call_log.logged(lambda **kw: None))

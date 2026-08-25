@@ -15,6 +15,7 @@ import re
 import secrets
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
@@ -26,6 +27,12 @@ APP_ROOT = Path(os.environ.get("BIA_WORKFLOW_ROOT", Path(__file__).resolve().par
 # The Graph client secret sits beside the bearer (C13, 2026-08-18): /srv/addendum/{secret,graph-secret}
 # on brain, <checkout>/{secret,graph-secret} locally — one knob (TOKEN_FILE) places both.
 SECRET_FILE = Path(os.environ.get("BIA_WORKFLOW_TOKEN_FILE", APP_ROOT / "secret")).parent / "graph-secret"
+# Demo rooms (2026-08-24): room code = company slug = storage folder = download URL. A room
+# is a directory under ROOMS_DIR; admission is directory existence, never a COMPANIES entry
+# (a second entry would flip every tool's company default to "" — the measured 2026-08-20
+# "which company?" regression). Derived beside SECRET_FILE on purpose: same knob, no new env.
+ROOMS_DIR = Path(os.environ.get("BIA_WORKFLOW_TOKEN_FILE", APP_ROOT / "secret")).parent / "demo-rooms"
+ROOMS_URL = "https://agent.ai4bcm.org/demo/rooms"
 SITE_HOST = "kgerner.sharepoint.com"
 SITE_PATH = "/sites/AIBCM"
 COMPANIES = tuple(
@@ -108,7 +115,7 @@ def _drive() -> str:
 def _jail(company: str, path: str = "") -> str | None:
     """Return the jailed drive path, or None if refused."""
     company = (company or "").strip().lower()
-    if company not in COMPANIES:
+    if company not in COMPANIES and _room_dir(company) is None:
         return None
     if path in ("", None):
         return company
@@ -120,8 +127,84 @@ def _jail(company: str, path: str = "") -> str | None:
     return company + "/" + "/".join(parts)
 
 
-def _err(msg: str) -> dict:
-    return {"error": msg}
+def _room_dir(company: str) -> Path | None:
+    """The demo-room directory for this code, or None (→ not a room). An allowlisted
+    company is never a room, even if a same-named directory exists — SharePoint wins.
+    BIA_SLUG is the traversal guard: the code becomes a path segment."""
+    key = (company or "").strip().lower()
+    if key in COMPANIES or not BIA_SLUG.fullmatch(key):
+        return None
+    d = ROOMS_DIR / key
+    return d if d.is_dir() else None
+
+
+def _room_path(room: Path, jailed: str) -> Path:
+    """ROOMS_DIR/<code>/<rel> from a _jail-approved path (the jail already refused
+    traversal, so the tail joins verbatim)."""
+    return room.joinpath(*jailed.split("/")[1:])
+
+
+# The schema-visible default. Derived, never a literal: a hardcoded "marschkamp" (which
+# next_step carried in two places) names a company the allowlist need not contain. Empty when
+# the allowlist has more than one entry, because then the parameter is a real question again.
+DEFAULT_COMPANY = COMPANIES[0] if len(COMPANIES) == 1 else ""
+
+
+def resolve_company(company: str | None) -> str:
+    """Answer `company` from the allowlist when it can only have one answer.
+
+    Measured 2026-08-20T14:37:49Z: the Logistics run stopped and Copilot Studio asked the manager
+    "Please provide the name of the company you want to fetch a document for". NO tool call
+    reached the server that turn, so no gate here was involved — a required parameter in the
+    declared schema is a question, and the platform asked it. With one allowlisted company it is
+    a question with exactly one possible answer, which is the same shape as the `mode` trap
+    removed the same morning: a slot the agent must fill with a fact the server already holds.
+
+    The default exists ONLY while the answer is unambiguous. Add a second company and an omitted
+    one stays empty, so `_jail`'s existing unknown-company refusal asks — correctly, because then
+    it really is a question. A named company is never redirected, even to the sole one.
+    """
+    if (company or "").strip():
+        return company
+    return COMPANIES[0] if len(COMPANIES) == 1 else (company or "")
+
+
+def _err(msg: str, next_move: str | None = None) -> dict:
+    """A refusal. `next_move` is what the AGENT does about it, and its presence is a
+    classification, not decoration: a refusal the agent can resolve alone carries one, a refusal
+    that genuinely needs the human — missing approval — deliberately does not.
+
+    Measured 2026-08-20, one run, the same missing reads, two tools. `next_step` refused at
+    13:17:59 carrying next_move and the agent read both files 7 seconds later with no user turn;
+    `write_company_file` refused at 14:06:18 without it and the agent invented an approval menu,
+    charging the manager a press to authorise reads that need no authorising. Both were delivered
+    with isError=True, so the flag was never the difference — the payload was. This module was
+    the only refusal path in the system returning a bare error; bia_referee and every advance-gate
+    refusal in addendum_tools already did this.
+    """
+    return {"error": msg} if next_move is None else {"error": msg, "next_move": next_move}
+
+
+def _next_move(read_calls: str | None, redraft: bool) -> str | None:
+    """One move covering every problem in the refusal, in the order they must be done.
+
+    Phrasing follows the advance gate's proven line ("Call {calls} — all of them — then retry
+    next_step") rather than inventing a new one: that is the wording measured to move the agent
+    without a user turn.
+    """
+    if read_calls and redraft:
+        return (f"Call {read_calls} — all of them — then rewrite the document from what they say "
+                "and retry this write.")
+    if read_calls:
+        return f"Call {read_calls} — all of them — then retry this write with the same content."
+    if redraft:
+        # Live 2026-08-24 06:43:19: the model saved its outline preview, so "Send the
+        # complete document you previewed" pointed at a document that never existed — and
+        # the refusal became an approval menu. Script the recovery from what IS at hand.
+        return ("Fix every numbered problem, send the complete document to this same "
+                "path, and retry this write now — the user's save approval covers the "
+                "corrected version; after the save, follow the receipt's next_move.")
+    return None
 
 
 def _drop_no_ops(entry: dict, changes: dict) -> tuple[dict, str | None]:
@@ -251,19 +334,35 @@ _validated_records: dict[str, dict] = {}  # company -> {"token", "data", "issued
 # NOT recorded inside read_file(): the referee reads the method and the register on every
 # validate call, and the advance gate fetches artifacts itself — counting those would make
 # the read gate pass for work the agent never did. Recorded at the tool boundary only.
-# ponytail: process-wide and cleared wholesale by start_journey, because start_journey_fn
-# takes no company. With two journeys in flight the second start clears the first's reads,
-# which makes the gate stricter rather than looser — it fails safe. Key it per journey if
-# concurrent runs ever become real.
-_reads_seen: dict[str, set[str]] = {}
+# ponytail: process-wide singleton, keyed by company — since §A.17 (2026-08-25) rooms are
+# per-user keys, which is what keeps two testers apart. Key it per journey if concurrent
+# runs inside ONE company ever become real.
+#
+# Ages out per path on a quiet gap rather than being wiped by a call (backlog §A.2).
+# start_journey used to call forget_reads() on every match — run-bia always matches — which
+# erased credit for reads the SAME run made minutes earlier: proven live, a register read
+# at 16:07:52 was gone by 16:11:49 and the 16:13:48 write was refused for a file it had
+# already read. There is no session id (ctx.client_id is unique per request), so a re-call
+# cannot be told apart from a genuinely new run — but a per-path idle timeout handles both
+# without needing to: reuse the save_token TTL boundary, since method.json/dependency-
+# register.json are stable company-wide reference data and re-reading them on every
+# re-displayed card taught the agent nothing new. Per-path, not one clock per company: a
+# single shared timestamp let ANY fresh read (an unrelated path, or a new run's first read)
+# revive every other path's stale credit, so a company folder that saw any activity within
+# each window never let old credit expire (caught adversarially, red-first regression below).
+READ_CREDIT_IDLE_S = SAVE_TOKEN_TTL_S
+_reads_seen: dict[str, dict[str, float]] = {}
 
 
 def note_read(company: str, path: str) -> None:
-    _reads_seen.setdefault((company or "").strip().lower(), set()).add(path)
+    key = (company or "").strip().lower()
+    _reads_seen.setdefault(key, {})[path] = time.monotonic()
 
 
 def reads_seen(company: str) -> set[str]:
-    return set(_reads_seen.get((company or "").strip().lower(), ()))
+    key = (company or "").strip().lower()
+    now = time.monotonic()
+    return {p for p, ts in _reads_seen.get(key, {}).items() if now - ts <= READ_CREDIT_IDLE_S}
 
 
 def forget_reads() -> None:
@@ -348,7 +447,7 @@ def _stage_contract_error(contract: dict, content: str, size: int) -> str | None
             "filename.")
 
 
-def _unread_source_error(company: str, contract: dict) -> str | None:
+def _unread_source_error(company: str, contract: dict) -> tuple[str, str] | None:
     """The stage's required reads, checked at the SAVE rather than only at the advance.
 
     Testers, 2026-08-20: seven approvals to reach Stage 2. next_step blocked on an unread
@@ -373,11 +472,12 @@ def _unread_source_error(company: str, contract: dict) -> str | None:
         return None
     label = contract.get("name") or contract["stage_id"]
     calls = "; ".join(f"read_company_file(company='{company}', path='{p}')" for p in missing)
-    return (f"write refused: this is the Stage-{contract['stage_num']} {label} "
-            f"({contract['path']}) and these have not been read in this journey: "
-            f"{', '.join(missing)}. This document's content must come from the company's own "
-            f"material, not from memory. Call {calls} — all of them — then write the document "
-            "from what they say.")
+    # The message states the problem; the CALLS travel in next_move, where the agent acts on
+    # them. Leaving them only in prose is what produced the approval menu of 14:06:18.
+    return ((f"write refused: this is the Stage-{contract['stage_num']} {label} "
+             f"({contract['path']}) and these have not been read in this journey: "
+             f"{', '.join(missing)}. This document's content must come from the company's own "
+             f"material, not from memory."), calls)
 
 
 def _graph_regen(company_key: str, rel: str, data: bytes, result: dict) -> None:
@@ -391,6 +491,48 @@ def _graph_regen(company_key: str, rel: str, data: bytes, result: dict) -> None:
         dep_graph.bank_and_regen(company_key, rel, data, result, read_file)
     except Exception as exc:  # noqa: BLE001 — hook boundary, logged and swallowed
         logging.getLogger(__name__).warning("graph regen failed: %s", exc)
+        # §A.1 requirement 3 / Hans §A.7: this boundary is where a shrinking record IS
+        # detected ("BIA activity count would drop from 3 to 1") and, until now, where the
+        # detection died — a log line nobody was reading while the human who approved a
+        # referee fix had been handed a delete. It still never blocks the write (its
+        # documented contract); it now says what came out, in the line the model prints.
+        drop = re.search(r"activity count would drop from (\d+) to (\d+)", str(exc))
+        line = (result.get("verification") or {}).get("human_line")
+        if drop and line:
+            was, now = drop.group(1), drop.group(2)
+            result["verification"]["human_line"] = (
+                f"{line} ⚠ This save leaves {now} BIA {'activity' if now == '1' else 'activities'} "
+                f"on the record, down from {was} — if you approved a fix and not a deletion, "
+                "restore the previous version from SharePoint's version history before "
+                "relying on this record.")
+
+
+def _guide_regen(company_key: str, rel: str, data: bytes, result: dict) -> None:
+    """Print view of the stage-1 interview guide (the deliverable a BCM manager clicks and
+    prints). Courtesy, not a contract: NEVER blocks or fails the write — same boundary as
+    _graph_regen above. The link rides human_line because the model already prints that
+    verbatim; changing a tool description instead would force a Copilot Studio republish."""
+    parts = rel.split("/")
+    if len(parts) != 3 or parts[2].casefold() != "stage1-scope-and-guide.md":
+        return
+    try:
+        import interview_guide  # lazy: keeps import cost off every write
+        url = interview_guide.publish(
+            company_key, parts[1], data,
+            register_text=_content_or_none(company_key, REGISTER_PATH),
+            method_text=_content_or_none(company_key, "02_BCM-Method/method.json"))
+        result["print_url"] = url
+        q, a = interview_guide.counts(data.decode("utf-8"))
+        # Hans's receipt ruling 2026-08-24: "give me the counts, they are the thing that
+        # tells me the guide is real without opening it."
+        result["verification"]["human_line"] = result["verification"]["human_line"].replace(
+            " sections.", f" sections, {q} questions across {a} activities.", 1)
+        # F6: a markdown link, never a bare URL. Live in bia3 the receipt's bare URL was
+        # followed by a word on the next line and the chat's autolinker extended the href
+        # into it, serving …/guide.htmlOpen. A link in brackets cannot be extended.
+        result["verification"]["human_line"] += f" [Print view]({url})"
+    except Exception as exc:  # noqa: BLE001 — hook boundary, logged and swallowed
+        logging.getLogger(__name__).warning("guide render failed: %s", exc)
 
 
 def list_files(company: str, subpath: str = "") -> dict:
@@ -399,7 +541,16 @@ def list_files(company: str, subpath: str = "") -> dict:
     jailed = _jail(company, subpath)
     if jailed is None:
         return _err(f"unknown company '{company}' — allowed: {', '.join(COMPANIES)}")
-    r = _get(f"{GRAPH}/drives/{_drive()}/root:/{jailed}:/children")
+    room = _room_dir(company)
+    if room is not None:
+        target = _room_path(room, jailed)
+        if not target.is_dir():
+            return _err(f"folder '{jailed}' not found")
+        files = [{"name": p.name, "size": p.stat().st_size if p.is_file() else 0,
+                  "is_folder": p.is_dir(), "path": p.name}
+                 for p in sorted(target.iterdir()) if not p.name.startswith(".")]
+        return {"company": company, "files": files}
+    r = _get(f"{GRAPH}/drives/{_drive()}/root:/{quote(jailed, safe='/')}:/children")
     if r.status_code == 404:
         return _err(f"folder '{jailed}' not found in SharePoint")
     r.raise_for_status()
@@ -476,17 +627,47 @@ def search_files(company: str, query: str) -> dict:
                     "backup packs are never read. Exact substring, case-insensitive."}
 
 
+def _content_or_none(company: str, path: str) -> str | None:
+    """A read that degrades to None on any failure — for server-side checks whose sources
+    are optional (a company without them still saves; the check skips). MUST NOT grant
+    read credit: note_read stays at the tool boundary only (see _reads_seen above)."""
+    try:
+        got = read_file(company, path)
+    except httpx.HTTPError:
+        return None
+    return None if "error" in got else got.get("content")
+
+
 def read_file(company: str, path: str) -> dict:
     jailed = _jail(company, path)
     if jailed is None or jailed == company:
         return _err("invalid path — use a relative path inside the company folder, e.g. 'company-profile.md'")
-    r = _get(f"{GRAPH}/drives/{_drive()}/root:/{jailed}:/content")
+    room = _room_dir(company)
+    if room is not None:
+        target = _room_path(room, jailed)
+        if not target.is_file():
+            return _err(f"file not found: {jailed} — call list_company_files to see what exists")
+        raw = target.read_bytes()
+        if len(raw) > MAX_READ:
+            return _err(f"file too large to read ({len(raw)} bytes)")
+        try:
+            return {"path": jailed, "content": raw.decode("utf-8"), "size": len(raw),
+                    "modified": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                              time.gmtime(target.stat().st_mtime))}
+        except UnicodeDecodeError:
+            return _err(f"file is not UTF-8 text: {jailed}")
+    r = _get(f"{GRAPH}/drives/{_drive()}/root:/{quote(jailed, safe='/')}:/content")
     if r.status_code == 404:
         return _err(f"file not found: {jailed} — call list_company_files to see what exists")
     r.raise_for_status()
     if len(r.content) > MAX_READ:
         return _err(f"file too large to read ({len(r.content)} bytes)")
-    return {"path": jailed, "content": r.text, "size": len(r.content)}
+    out = {"path": jailed, "content": r.text, "size": len(r.content)}
+    # §A.16's "when was it saved": the download response usually carries Last-Modified —
+    # a free fact, passed through verbatim; absent header, absent key. Never a second call.
+    if r.headers.get("last-modified"):
+        out["modified"] = r.headers["last-modified"]
+    return out
 
 
 # Task 7 (2026-08-19): the receipt says what moved. A consultant judged the old wording —
@@ -539,18 +720,42 @@ def write_file(company: str, path: str, content: str = "",
     # with rearm_register.py). Upgrade path if that bites —
     # give each agent its own endpoint and token so the server can tell callers apart, then
     # bind writes to the caller instead of the allowlist.
+    room = _room_dir(company_key)  # rooms: same gates, different data plane (2026-08-24)
     stored: bytes | None = None
     if save_token is not None:
         guard, stored = _save_token_error(company_key, rel, save_token, content)
         if guard:
             return _err(guard)
         content = stored.decode("utf-8")  # write by reference: server-owned bytes
+    # Backlog §A.1, the top defect: _save_token_error binds a TOKEN to this path, and until
+    # now nothing bound the PATH to a token — so a hand-typed record carrying expect= took
+    # the ordinary document lane and saved with the referee never consulted. Proven by probe,
+    # and it happened live on 2026-08-20: a 44,064-byte record replaced by 18,966 bytes no
+    # validate call ever reported. The record is the product's core claim; it enters only
+    # through the referee. Enforcement, because the tool description has said "never re-type
+    # the record" all along and instruction has failed six times here (§B.1–B.6).
+    if rel == RECORD_SAVE_PATH and stored is None:
+        return _err("write refused: the BIA record is saved by reference, never re-typed — "
+                    "call validate_bia_record and pass the save_token from its PASS result "
+                    "(omit content; the server writes the referee-validated bytes itself). "
+                    "A record the referee has not passed is not a record.",
+                    "Call validate_bia_record with the full record, fix anything it "
+                    "rejects, then retry this write with save_token=<its token> and no "
+                    "content.")
     if not content:
         # content is optional for the token lane ONLY — an omitted-content overwrite
         # must never truncate a ledger/artifact to zero bytes.
         return _err("write refused: content is empty — pass the complete file content "
                     "(the validated BIA record saves via save_token instead).")
     data = content.encode("utf-8")
+    # §A.1 requirement 2: assert byte-identity, do not assume it. The round-trip through str
+    # above is identity for valid UTF-8 today; this pins that nothing between the token check
+    # and the PUT may ever change the referee-validated bytes. The read-back at the far end
+    # compares against `stored` too — this is the near end of the same claim.
+    if stored is not None and data != stored:
+        return _err("write refused: the bytes to be written are not the referee-validated "
+                    "bytes this save_token is bound to — nothing was written; re-run "
+                    "validate_bia_record.")
     if len(data) > MAX_WRITE:
         return _err(f"content too large ({len(data)} bytes > {MAX_WRITE})")
     if rel.startswith("output/") and expect is None and save_token is None:
@@ -565,6 +770,8 @@ def write_file(company: str, path: str, content: str = "",
     # co-occurred in the call log.
     expect_problem = _expect_error(expect, content, len(data)) if expect is not None else None
     problems = []
+    read_calls = None
+    contract_problem = None
     if rel.startswith("output/") and stored is None:
         if "<" in rel or ">" in rel:
             return _err("write refused: replace <bia> in the path with this BIA's folder slug "
@@ -601,6 +808,7 @@ def write_file(company: str, path: str, content: str = "",
                 guard = _bia_folder_error(rel, contract)
                 if guard:
                     return _err(guard)
+            unread = _unread_source_error(company, contract)
             contract_problem = _stage_contract_error(contract, content, len(data))
             if contract_problem:
                 # The same yardstick, said twice: an agent that behaves takes min_bytes and the
@@ -609,10 +817,26 @@ def write_file(company: str, path: str, content: str = "",
                 # it — that one names the stage and the canonical path. A stricter `expect` the
                 # contract is happy with still stands on its own below.
                 expect_problem = None
-            problems += [_unread_source_error(company, contract), contract_problem]
+            if unread:
+                problems.append(unread[0])
+                read_calls = unread[1]
+            problems.append(contract_problem)
+    # The guide jaw (backlog §A.8, Hans's ruling 2026-08-23): count and shape, not bytes.
+    # Joins the same batch so a thin AND hollow draft learns everything in one refusal.
+    guide_problems: list[str] = []
+    if rel.casefold().rsplit("/", 1)[-1] == "stage1-scope-and-guide.md" \
+            and "## Interview guide" in content:   # marker absence is the contract's refusal
+        import interview_guide  # lazy, like the pp4 jaw's bia_referee import
+        guide_problems = interview_guide.problems(
+            content,
+            _content_or_none(company, "02_BCM-Method/method.json"),
+            _content_or_none(company, REGISTER_PATH))
+        problems.extend(guide_problems)
     problems = [p for p in [expect_problem, *problems] if p]
     if problems:
-        return _err(_one_refusal(problems))
+        return _err(_one_refusal(problems),
+                    _next_move(read_calls,
+                               bool(expect_problem or contract_problem or guide_problems)))
     if rel.casefold().rsplit("/", 1)[-1] == "pp4-handoff.md":
         # Lesson #26: enumeration lives in the write jaw — the yaml wording alone
         # failed 6 consecutive runs.
@@ -637,21 +861,26 @@ def write_file(company: str, path: str, content: str = "",
         guard = _register_payload_error(data)
         if guard:
             return _err(guard)
-    meta = _get(f"{GRAPH}/drives/{_drive()}/root:/{jailed}")
-    exists = meta.status_code == 200
-    # The receipt says what moved, so an overwrite's previous size — when the DriveItem
-    # metadata carries one — feeds the sentence below. A double may answer with no body or
-    # no `size` key (every fixture in test_graph_files.py does that), so this must never
-    # raise: guarded to None rather than trusted.
-    prev_size = None
-    if exists:
-        try:
-            meta_json = meta.json()
-        except ValueError:
-            meta_json = None
-        raw_size = meta_json.get("size") if isinstance(meta_json, dict) else None
-        if isinstance(raw_size, int) and not isinstance(raw_size, bool):
-            prev_size = raw_size
+    if room is not None:
+        target = _room_path(room, jailed)
+        exists = target.is_file()
+        prev_size = target.stat().st_size if exists else None
+    else:
+        meta = _get(f"{GRAPH}/drives/{_drive()}/root:/{quote(jailed, safe='/')}")
+        exists = meta.status_code == 200
+        # The receipt says what moved, so an overwrite's previous size — when the DriveItem
+        # metadata carries one — feeds the sentence below. A double may answer with no body or
+        # no `size` key (every fixture in test_graph_files.py does that), so this must never
+        # raise: guarded to None rather than trusted.
+        prev_size = None
+        if exists:
+            try:
+                meta_json = meta.json()
+            except ValueError:
+                meta_json = None
+            raw_size = meta_json.get("size") if isinstance(meta_json, dict) else None
+            if isinstance(raw_size, int) and not isinstance(raw_size, bool):
+                prev_size = raw_size
     # ponytail: mode is a fact the GET above just established, so asking the agent to declare
     # it too was a symmetric trap — "cannot overwrite: does not exist" one way, "file already
     # exists: use mode='overwrite'" the other. Three live refusals, both directions, and not one
@@ -662,21 +891,36 @@ def write_file(company: str, path: str, content: str = "",
     # parameter stays accepted and ignored: two testers are live and dropping it from the tool
     # schema would fail their next call at the transport.
     mode = "overwrite" if exists else "create"
-    with _client() as http:
-        r = http.put(
-            f"{GRAPH}/drives/{_drive()}/root:/{jailed}:/content",
-            headers={"Authorization": f"Bearer {_token()}",
-                     "Content-Type": "text/plain; charset=utf-8"},
-            content=data,
-        )
-    r.raise_for_status()
-    # The PUT response IS the DriveItem: keep its webUrl so a save can answer "where is it, can I
-    # open it?" with a link instead of a path. Run (a) 2026-08-18: Hans asked four times and got
-    # "go and look in the folder yourself"; the same question is all over the W33 digest.
-    try:
-        web_url = (r.json() or {}).get("webUrl")
-    except ValueError:
-        web_url = None
+    if room is not None:
+        if exists:
+            # The Graph lane's clobber guard is SharePoint's version history; a room keeps
+            # the same promise itself: the old bytes move to .versions/ before the write.
+            # ponytail: flat per-room store, name = <UTCts>-<basename>; growth unbounded and
+            # a same-second overwrite of one file keeps only the newest copy — accepted, a
+            # room is disposable demo fiction. Upgrade path: per-path subdirs.
+            vdir = room / ".versions"
+            vdir.mkdir(exist_ok=True)
+            stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            (vdir / f"{stamp}-{target.name}").write_bytes(target.read_bytes())
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        web_url = f"{ROOMS_URL}/{jailed}"
+    else:
+        with _client() as http:
+            r = http.put(
+                f"{GRAPH}/drives/{_drive()}/root:/{quote(jailed, safe='/')}:/content",
+                headers={"Authorization": f"Bearer {_token()}",
+                         "Content-Type": "text/plain; charset=utf-8"},
+                content=data,
+            )
+        r.raise_for_status()
+        # The PUT response IS the DriveItem: keep its webUrl so a save can answer "where is it,
+        # can I open it?" with a link instead of a path. Run (a) 2026-08-18: Hans asked four
+        # times and got "go and look in the folder yourself"; same question all over W33.
+        try:
+            web_url = (r.json() or {}).get("webUrl")
+        except ValueError:
+            web_url = None
     # The register lane carries neither expect nor save_token, so it used to take the
     # early return below: no read-back, and evidence.json banking
     # human_line as null on every register write while the record lane
@@ -701,11 +945,16 @@ def write_file(company: str, path: str, content: str = "",
     if not back_ok:
         return _err("written but read-back verification failed — the saved file does not "
                     "match the approved preview. Retry with the complete approved content.")
-    # Run (a) 2026-08-18, Hans §5: the receipt names the file (basename — the path stays out) so
-    # two saves in a row never read as one repeated line, and an overwrite says where the old
-    # version went instead of leaving the agent to hedge about it.
-    name = rel.rsplit("/", 1)[-1]
-    kept = (" The previous version stays in SharePoint's version history."
+    # Run (a) 2026-08-18, Hans §5: the receipt names the file so two saves in a row never
+    # read as one repeated line. REVERSED to the full company-relative path 2026-08-24, by
+    # the same judge: "add the folder, i asked twice in my own run where things were saved
+    # and it should not take asking" — and sales/ and packing/ both hold a
+    # stage1-scope-and-guide.md, so the basename alone is ambiguous the moment two BIAs
+    # exist. Company-relative (output/…), never jailed — §A.7's one-path-form rule: the
+    # path he approved is the path the receipt repeats.
+    name = rel
+    history = "the room's" if room is not None else "SharePoint's"
+    kept = (f" The previous version stays in {history} version history."
             if mode == "overwrite" else "")
     # Run (b) 2026-08-18, Hans §5: "'Saved and checked: … matches what you approved (all 4 required
     # sections present).' → 'saved, 3,955 bytes, 4 sections.' Marking your own homework is not a
@@ -737,6 +986,10 @@ def write_file(company: str, path: str, content: str = "",
               "verification": verification}
     if web_url:
         result["url"] = web_url
+        # F6: the openable link rides the receipt as markdown, because human_line is the one
+        # string the model prints verbatim. Without it the model composed its own "Open
+        # document: <url>" from result['url'] and the autolinker glued the next word onto it.
+        verification["human_line"] += f" [Open document]({web_url})"
     # 2026-08-16 smart next steps: a verified save on a canonical stage path names the gate
     # and the literal advance call; anything else just carries on with the current stage.
     stage = _contract_for(rel)
@@ -750,6 +1003,7 @@ def write_file(company: str, path: str, content: str = "",
     if amendment is not None and stored is not None:
         result["amendment"] = amendment
     _graph_regen(company_key, rel, data, result)
+    _guide_regen(company_key, rel, data, result)
     return result
 
 

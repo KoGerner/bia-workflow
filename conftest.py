@@ -48,3 +48,11 @@ def _usage_log_to_tmp(monkeypatch, tmp_path):
     tmp, never in the live usage dir (141 test rows polluted it on 2026-08-16 before this)."""
     import call_log
     monkeypatch.setattr(call_log, "DIR", tmp_path / "bia-usage")
+
+
+@pytest.fixture(autouse=True)
+def _rooms_to_tmp(monkeypatch, tmp_path):
+    """Room routing is directory existence under ROOMS_DIR — point it at tmp so no test
+    ever sees a real room and every test starts roomless (mirrors _graph_pages_to_tmp)."""
+    import graph_files
+    monkeypatch.setattr(graph_files, "ROOMS_DIR", tmp_path / "demo-rooms")

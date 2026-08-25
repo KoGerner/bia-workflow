@@ -45,6 +45,10 @@ def check(company: str, path: str) -> str:
     `output/`. `_jail` resolves traversal, so `output/../01_Organisation/x.md` is caught here
     rather than by hoping the string looks safe.
     """
+    if graph_files._room_dir(company) is not None:
+        raise SystemExit(f"refused: '{company}' is a demo room on the local filesystem — this "
+                         "script deletes SharePoint files only. Remove the file under the room "
+                         "directory as the operator, or re-mint the room (mint_demo_rooms.py).")
     jailed = graph_files._jail(company, path)
     if jailed is None or jailed == company:
         raise SystemExit(f"refused: {path!r} is not a path inside {company}")

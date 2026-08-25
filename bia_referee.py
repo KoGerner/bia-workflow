@@ -737,7 +737,7 @@ def _merge_saved_activities(record: dict, company: str) -> tuple[dict, str | Non
     return {**record, "activities": merged}, None, prior_by_key
 
 
-def validate_bia_record(company: str, record) -> dict:
+def validate_bia_record(company: str, record=None) -> dict:
     """Referee wrapper: the verdict plus its next move (2026-08-16 smart next steps) — PASS →
     show the first card; FAIL → fix mechanical rejections yourself; error → unchanged."""
     out = _validate_bia_record(company, record)
@@ -749,12 +749,24 @@ def validate_bia_record(company: str, record) -> dict:
     return out
 
 
-def _validate_bia_record(company: str, record) -> dict:
+def _validate_bia_record(company: str, record=None) -> dict:
     """Referee a drafted BIA record against the company's method + interviews (server-side fetch).
     Returns {"pass": True, "save_token": ...}, {"pass": False, "rejections": [...]}, or
     {"error": ...} on an infrastructure failure (method matrix unreadable). READ-ONLY: judges,
     never writes — a PASS additionally binds the record's canonical bytes to a one-time
     save_token (P7 I-1 part 3) so the save happens by reference, never re-typed."""
+    # Backlog §A.12: validate-by-reference, the mirror of §A.1's save-by-reference. `record`
+    # omitted means "referee the record on disk" — the server fetches it, so no bytes pass
+    # through the model. Live 2026-08-24: asked to referee the saved record, the agent read
+    # 18,966 bytes and handed back a 152-byte stub, because re-typing was the only route.
+    if record is None:
+        saved = graph_files.read_file(company, _RECORD_PATH)
+        if "error" in saved:
+            return {"pass": False, "rejections": [
+                f"there is no saved BIA record to validate at {_RECORD_PATH} "
+                f"({saved['error']}). Pass the drafted record as the `record` argument "
+                "instead, or save one first."]}
+        record = saved["content"]
     if isinstance(record, str):
         try:
             record = json.loads(record)

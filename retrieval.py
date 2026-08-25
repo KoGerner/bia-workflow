@@ -58,9 +58,6 @@ class AddendumIndex:
     def get(self, chunk_id: str) -> Chunk | None:
         return next((chunk for chunk in self.chunks if chunk.id == chunk_id), None)
 
-    def topics(self) -> dict[str, Any]:
-        return self.index
-
     def search(
         self,
         query: str,

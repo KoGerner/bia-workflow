@@ -1207,3 +1207,57 @@ def test_pp4_missing_tolerates_typographic_hyphens():
     register = {"PE-ZERLEG-01": {"asset_id": "PE-ZERLEG-01", "owner_name": "P", "pp4_issue": True}}
     handoff = "Register-wide: PE‑ZERLEG‑01 labour pool carry-forward.\n"
     assert bia_referee.pp4_missing(register, handoff) == []
+
+
+def test_omitted_record_validates_the_file_on_disk(monkeypatch):
+    """Backlog §A.12, from the owner's 2026-08-24 attempt: the agent read 18,966 bytes and
+    handed the referee a 152-byte stub, because `record` was required and the only route to
+    the saved record was re-typing it. Omitting it now means the SERVER fetches the file —
+    the mirror of §A.1's save-by-reference."""
+    files = _pack()
+    saved = valid_activity_record()
+    files["output/bia-record.json"] = json.dumps(saved, ensure_ascii=False, indent=2) + "\n"
+    _install(monkeypatch, files)
+    graph_files._validated_records.clear()
+    out = validate_bia_record("marschkamp")
+    assert out.get("pass") is True, out
+    assert "save_token" in out
+
+
+def test_omitted_record_judges_the_files_bytes_not_a_retyped_copy(monkeypatch):
+    """The point of the fix: what the referee judged must come from the file. Serve a record
+    the caller never had, and the verdict must still be about it."""
+    files = _pack()
+    only_on_disk = _named_activity_record("Cutting / deboning")
+    files["output/bia-record.json"] = json.dumps(only_on_disk, ensure_ascii=False, indent=2) + "\n"
+    _install(monkeypatch, files)
+    graph_files._validated_records.clear()
+    out = validate_bia_record("marschkamp")
+    assert out.get("pass") is True, out
+    slot = graph_files._validated_records["marschkamp"]
+    assert b"Cutting / deboning" in slot["data"]
+
+
+def test_omitted_record_with_no_saved_record_teaches_the_next_move(monkeypatch):
+    """A company whose first BIA has not been saved yet. Owner ruling 2026-08-24: a teaching
+    refusal, never a bare error and never a silent empty-record score — an empty verdict would
+    be indistinguishable from the 152-byte stub that started this."""
+    _install(monkeypatch, _pack())          # _pack() has no output/bia-record.json
+    out = validate_bia_record("marschkamp")
+    assert out.get("pass") is False, out
+    blob = " ".join(out["rejections"])
+    assert "output/bia-record.json" in blob
+    assert "no saved BIA record" in blob
+    assert out.get("next_move")
+
+
+def test_a_supplied_record_still_behaves_exactly_as_before(monkeypatch):
+    """The Copilot manifest keeps sending `record` until the owner republishes, so the old
+    path must not change. Regression pin — it passed before this change and must keep passing."""
+    _install(monkeypatch, _pack())
+    graph_files._validated_records.clear()
+    rec = valid_activity_record()
+    out = validate_bia_record("marschkamp", rec)
+    assert out.get("pass") is True, out
+    slot = graph_files._validated_records["marschkamp"]
+    assert slot["data"] == (json.dumps(rec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

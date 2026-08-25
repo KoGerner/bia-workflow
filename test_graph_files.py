@@ -1,6 +1,7 @@
 """Unit tests for graph_files — jail + gate logic, Graph mocked."""
 import hashlib
 import json
+import re
 
 import httpx
 import pytest
@@ -439,20 +440,23 @@ def test_expect_pass_writes_verifies_and_returns_human_line(monkeypatch):
     assert out.get("written") is True
     line = out["verification"]["human_line"]
     assert "Saved" in line and "2 sections" in line
-    assert "sha" not in line.lower() and "output/" not in line  # manager-legible, no internals
+    assert "sha" not in line.lower() and "marschkamp/" not in line  # no jail internals
 
 
 def test_receipt_names_the_file(monkeypatch):
-    """Run (a), 2026-08-18, Hans §5: two identical '✓ Saved and checked … (all 4 required sections
-    present)' lines in a row read like a bug — name the file in the receipt. Basename only: the
-    path stays out (manager-legible, the card already carries the path)."""
+    """Run (a), 2026-08-18, Hans §5: two identical receipts in a row read like a bug — name
+    the file. REVERSED to the full company-relative path 2026-08-24 by the same judge: 'add
+    the folder, i asked twice in my own run where things were saved' — and sales/ and
+    packing/ both hold a stage1-scope-and-guide.md, so the basename is ambiguous the moment
+    two BIAs exist. The jailed company prefix still never appears (§A.7's one-path-form
+    rule: the path he approved is the path the receipt repeats)."""
     state = {}
     _mock(monkeypatch, _artifact_handler(state))
     out = gf.write_file("marschkamp", "output/slaughter/scope-notes.md", FULL_CONTENT,
                         user_confirmed=True, expect=FULL_EXPECT)
     line = out["verification"]["human_line"]
-    assert "scope-notes.md" in line
-    assert "output/" not in line
+    assert "output/slaughter/scope-notes.md" in line
+    assert "marschkamp/" not in line
 
 
 def test_receipt_states_the_byte_count_it_wrote(monkeypatch):
@@ -545,6 +549,11 @@ def _stage2_full():
     return ("# Stage 2 — Structured Interview Capture\n\n"
             "## Impacts\n" + "impact line\n" * 30 +
             "## Dependencies\n" + "dependency line\n" * 30 +
+            "### Resource requirements by category\n"          # §A.15: all four, always
+            "- People — carried from prior transcripts.\n"
+            "- IT/applications — partial, via ERP and weighing.\n"
+            "- Buildings/seats — not asked in this interview.\n"
+            "- Suppliers — not asked in this interview.\n" +
             "## Assumptions\n" + "assumption line\n" * 10 +
             "## Unresolved points\n" + "open point\n" * 10 +
             "## Gaps\n" + "gap line\n" * 10)
@@ -903,14 +912,74 @@ def test_save_token_write_by_reference_and_single_use(monkeypatch):
     assert state["put"] == _canonical(rec)  # exact stored bytes, no re-emission
     line = out["verification"]["human_line"]
     new_size = len(state["put"].encode("utf-8"))
-    assert line == f"✓ Saved: bia-record.json — {new_size:,} bytes."
-    assert "sha" not in line.lower() and "output/" not in line  # manager-legible
+    assert line == f"✓ Saved: output/bia-record.json — {new_size:,} bytes."
+    assert "sha" not in line.lower() and "marschkamp/" not in line  # no jail internals
     # consumed on success — replay teaches revalidation, nothing reaches SharePoint
     state2 = {}
     _mock(monkeypatch, _artifact_handler(state2))
     again = gf.write_file("marschkamp", RECORD, "", user_confirmed=True, save_token=tok)
     assert "error" in again and "validate_bia_record" in again["error"]
     assert "put" not in state2
+
+
+def test_the_record_cannot_be_written_without_a_save_token(monkeypatch):
+    """Backlog §A.1, the top defect, PROVEN BY PROBE 2026-08-20: the referee returns a
+    save_token, but nothing bound the record PATH to a token — so a hand-typed record with
+    expect={markers,min_bytes} took the ordinary document lane and saved, referee never
+    consulted. It happened live: last PASS 15:56:34 at 13,889 bytes, write 15:58:32 at
+    18,966, no validate call anywhere reporting 18966, 44,064 bytes on disk beforehand.
+    A 44 KB record was replaced by 19 KB nothing ever validated.
+
+    Enforcement, not instruction: the tool description already said 'never re-type the
+    record' and instruction has failed six times on this codebase (§B.1–B.6)."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    # Fat enough to clear the stage contract's floor — the point is that NOTHING but the
+    # missing token stands between hand-typed bytes and the saved record.
+    hand_typed = _canonical(_fat_record())
+    out = gf.write_file("marschkamp", RECORD, hand_typed, user_confirmed=True,
+                        expect={"markers": ["activities"], "min_bytes": 1500})
+    assert "error" in out, out
+    assert "save_token" in out["error"], out["error"]
+    assert "validate_bia_record" in out["error"], out["error"]
+    assert "put" not in state, "the unvalidated record must never reach SharePoint"
+
+
+def test_the_record_refusal_tells_the_agent_to_validate_first(monkeypatch):
+    """A refusal the agent can resolve alone carries next_move (the _err classification) —
+    here the whole recovery is one call it already has."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    out = gf.write_file("marschkamp", RECORD, _canonical(_fat_record()), user_confirmed=True,
+                        expect={"markers": ["activities"], "min_bytes": 10})
+    assert "error" in out, out
+    assert "validate_bia_record" in (out.get("next_move") or ""), out
+
+
+def test_a_shrinking_record_says_what_came_out_in_the_receipt(monkeypatch):
+    """Hans, §A.7, on the live 44,064 → 18,966 save: *"i approved that write as a referee
+    fix, not as a delete."* The loss WAS detected — _graph_regen's activity-count check
+    raised 'BIA activity count would drop from 3 to 1' — and the detection went to a log,
+    which is the estate charter's "alarms are read, not filed" broken inside the product.
+    The number has a user-visible home now: the receipt line the model prints verbatim.
+
+    The regen boundary still never blocks the write (its documented contract) — it warns."""
+    import dep_graph
+    state = {}
+    _mock(monkeypatch, _existing_artifact_handler(state, size=44064))
+
+    def refuse(company, rel, data, result, fetch):
+        raise RuntimeError("refusing to publish marschkamp: BIA activity count would drop "
+                           "from 3 to 1. Check the record is really gone")
+
+    monkeypatch.setattr(dep_graph, "bank_and_regen", refuse)
+    tok = gf.issue_save_token("marschkamp", _fat_record())
+    out = gf.write_file("marschkamp", RECORD, "", user_confirmed=True, save_token=tok)
+    assert out.get("written") is True, out          # the boundary never blocks
+    line = out["verification"]["human_line"]
+    assert "3" in line and "1" in line, line        # what came out, by the numbers
+    assert "activit" in line.lower(), line
+    assert "version history" in line.lower(), line  # and how to get it back
 
 
 def test_save_token_still_requires_user_confirmed():
@@ -1499,7 +1568,7 @@ def test_expect_lane_receipt_shows_the_previous_size_when_graph_reports_one(monk
                         mode="overwrite", expect={"markers": DRAFT_MARKERS, "min_bytes": 3000})
     assert out.get("written") is True
     line = out["verification"]["human_line"]
-    assert "✓ Saved: draft.md — 3,955 → 4,210 bytes, 6 sections." in line
+    assert "✓ Saved: output/draft.md — 3,955 → 4,210 bytes, 6 sections." in line
     assert "matches what you approved" not in line
 
 
@@ -1512,7 +1581,7 @@ def test_expect_lane_receipt_degrades_to_one_number_without_a_previous_size(monk
     out = gf.write_file("marschkamp", "output/draft.md", content, user_confirmed=True,
                         expect={"markers": DRAFT_MARKERS, "min_bytes": 3000})
     assert out.get("written") is True
-    assert out["verification"]["human_line"] == "✓ Saved: draft.md — 4,210 bytes, 6 sections."
+    assert out["verification"]["human_line"] == "✓ Saved: output/draft.md — 4,210 bytes, 6 sections."
 
 
 def test_record_lane_receipt_states_the_amendment_that_moved(monkeypatch):
@@ -1529,7 +1598,7 @@ def test_record_lane_receipt_states_the_amendment_that_moved(monkeypatch):
     new_size = len(state["record"].encode("utf-8"))
     line = out["verification"]["human_line"]
     assert line == (
-        f'✓ Saved: bia-record.json — {new_size:,} bytes; owner on "Slaughter Process" '
+        f'✓ Saved: output/bia-record.json — {new_size:,} bytes; owner on "Slaughter Process" '
         'changed from "Torsten Ahlgrim" to "Olga Milevska". The previous version stays '
         "in SharePoint's version history."
     )
@@ -1552,7 +1621,7 @@ def test_record_lane_receipt_with_previous_size_and_amendment(monkeypatch):
     assert out.get("written") is True
     line = out["verification"]["human_line"]
     assert line == (
-        f'✓ Saved: bia-record.json — 12,880 → {new_size:,} bytes; owner on "Slaughter '
+        f'✓ Saved: output/bia-record.json — 12,880 → {new_size:,} bytes; owner on "Slaughter '
         'line" changed from "unassigned" to "J. Vermeer". The previous version stays in '
         "SharePoint's version history."
     )
@@ -1570,7 +1639,7 @@ def test_record_lane_receipt_without_amendment_is_just_the_sizes(monkeypatch):
     out = gf.write_file("marschkamp", RECORD, "", user_confirmed=True, save_token=tok)
     assert out.get("written") is True
     new_size = len(_canonical(rec).encode("utf-8"))
-    assert out["verification"]["human_line"] == f"✓ Saved: bia-record.json — {new_size:,} bytes."
+    assert out["verification"]["human_line"] == f"✓ Saved: output/bia-record.json — {new_size:,} bytes."
 
 
 def test_update_register_entry_receipt_states_the_amendment_that_moved(monkeypatch):
@@ -1637,6 +1706,50 @@ def test_a_read_is_found_whatever_the_casing():
     assert graph_files.reads_seen("marschkamp") == {"02_BCM-Method/method.json"}
 
 
+def test_read_credit_expires_after_the_idle_window(monkeypatch):
+    """Backlog §A.2, second half: a genuinely new run must not inherit stale credit. Credit
+    now ages out on a quiet gap instead of being wiped by a start_journey call."""
+    import graph_files
+    graph_files.forget_reads()
+    now = [1000.0]
+    monkeypatch.setattr(graph_files.time, "monotonic", lambda: now[0])
+    graph_files.note_read("marschkamp", "02_BCM-Method/method.json")
+    now[0] += graph_files.READ_CREDIT_IDLE_S + 1
+    assert graph_files.reads_seen("marschkamp") == set()
+
+
+def test_read_credit_survives_a_recall_within_the_idle_window(monkeypatch):
+    """Backlog §A.2, the proven defect: reads four minutes apart lost credit. A quiet gap
+    well inside the idle window must not touch either read."""
+    import graph_files
+    graph_files.forget_reads()
+    now = [1000.0]
+    monkeypatch.setattr(graph_files.time, "monotonic", lambda: now[0])
+    graph_files.note_read("marschkamp", "02_BCM-Method/method.json")
+    now[0] += 4 * 60
+    graph_files.note_read("marschkamp", "03_Dependencies/dependency-register.json")
+    assert graph_files.reads_seen("marschkamp") == {
+        "02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"}
+
+
+def test_a_fresh_read_does_not_revive_a_stale_sibling_reads_credit(monkeypatch):
+    """Adversarial-review finding: a single shared per-company clock lets any fresh read (of
+    an unrelated path, read well inside the idle window) reset the clock for EVERY
+    previously-credited path — so checking after the first path alone would be stale, but
+    before the shared clock's own window closes, wrongly still returns it. Each path must
+    age out on its own timestamp, not a per-company one."""
+    import graph_files
+    graph_files.forget_reads()
+    now = [1000.0]
+    monkeypatch.setattr(graph_files.time, "monotonic", lambda: now[0])
+    graph_files.note_read("marschkamp", "02_BCM-Method/method.json")
+    now[0] += graph_files.READ_CREDIT_IDLE_S - 30 * 60   # still within the window: refreshes
+                                                          # a SHARED clock were there one
+    graph_files.note_read("marschkamp", "03_Dependencies/dependency-register.json")
+    now[0] += 60 * 60   # now: >IDLE_S since the first read, <IDLE_S since the second
+    assert graph_files.reads_seen("marschkamp") == {"03_Dependencies/dependency-register.json"}
+
+
 # ── the read gate, moved to the write jaw (1a) ────────────────────────────────────────────
 # Testers complained 2026-08-20: reaching Stage 2 took seven approvals. The log showed why —
 # next_step blocked on an unread register AFTER the scope note had been drafted, approved and
@@ -1644,10 +1757,15 @@ def test_a_read_is_found_whatever_the_casing():
 # informing it. Same check, one jaw earlier: refuse the SAVE, and the agent reads, then drafts
 # once. No new machinery and no payload — the advance gate keeps its own copy as the backstop.
 STAGE1_PATH = "output/packing/stage1-scope-and-guide.md"
+# The guide section conforms to the interview_guide universal checks (questions, short set,
+# bring list) — with _stage1_handler's '{"scenarios": []}' sources the register/method checks
+# have nothing to demand, so these fixtures exercise the read gate, not the guide jaw.
 STAGE1_CONTENT = ("## Scope\n" + "the packing department scope line\n" * 20 +
                   "## Risk and environment\n" + "the risk and environment line\n" * 20 +
                   "## Method parameters\n" + "the method parameter line\n" * 20 +
-                  "## Interview guide\n" + "the interview question line\n" * 20)
+                  "## Interview guide\n" + "what breaks when this stops?\n" * 20 +
+                  "### Short version\n1. what first? 2. how bad? 3. depends on what?\n" +
+                  "### Bring to the interview\n- last year's BIA\n")
 STAGE1_EXPECT = {"markers": ["## Scope", "## Risk and environment",
                              "## Method parameters", "## Interview guide"], "min_bytes": 1200}
 
@@ -1702,6 +1820,146 @@ def test_a_source_the_company_never_supplied_does_not_block_the_save(monkeypatch
     out = gf.write_file("marschkamp", STAGE1_PATH, STAGE1_CONTENT,
                         user_confirmed=True, expect=STAGE1_EXPECT)
     assert out.get("written") is True, out
+
+
+GUIDE_METHOD_JSON = ('{"time_horizons": ["0–4 h", "8 h", "24 h", "48 h", "72 h", '
+                     '"1 week"], "scenarios": [{"id": "financial", "name": "Financial"}]}')
+GUIDE_REGISTER_JSON = ('{"IT-ERP-01": {"name": "SAP", "criticality": 1, "consumers": '
+                       '[{"dept": "vertrieb", "activity": "order/EDI with grocery-retail '
+                       'customers"}]}}')
+
+
+def _stage1_guide_world(monkeypatch, state):
+    """The _pp4_world pattern for the guide jaw: both stage-1 sources serve REAL-shaped
+    JSON (en-dash horizons, a register activity with a consuming asset id), reads are
+    credited so the read gate stays out of the way, and the guide jaw is what decides."""
+    inner = _artifact_handler(state)
+
+    def handler(request):
+        url = str(request.url)
+        if "method.json" in url and request.method == "GET":
+            return httpx.Response(200, text=GUIDE_METHOD_JSON)
+        if "dependency-register.json" in url and request.method == "GET":
+            return httpx.Response(200, text=GUIDE_REGISTER_JSON)
+        return inner(request)
+
+    _mock(monkeypatch, handler)
+    for path in ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"):
+        gf.note_read("marschkamp", path)
+
+
+GUIDE_CONFORMING = (
+    "## Scope\n" + "the sales department scope line\n" * 30 +
+    "## Risk and environment\n" + "the risk line\n" * 10 +
+    "## Method parameters\nHorizons: 0–4 h, 8 h, 24 h, 48 h, 72 h, 1 week.\n" +
+    "## Interview guide\n"
+    "### order/EDI with grocery-retail customers\n"
+    "1. If this stops, what breaks at 0–4 h, 8 h, 24 h, 48 h, 72 h, 1 week?\n"
+    "2. When is it intolerable, and in which categories?\n"
+    "3. Nights, weekends, peak weeks — what changes?\n"
+    "4. People per shift, rooms, kit — what must keep running?\n"
+    "5. This depends on IT-ERP-01 — what happens while it is away?\n"
+    "6. Single points of failure? (Recorded for the risk assessment, not scored here.)\n"
+    "### Short version (20 minutes)\n"
+    "1. What breaks first? 2. What can you not tolerate? 3. What do you depend on?\n"
+    "### Bring to the interview\n- last year's BIA for sales\n- the delivery SLA\n")
+
+
+def test_stage1_save_with_a_hollow_interview_guide_is_refused(monkeypatch):
+    """The 2026-08-23 live defect (backlog §A.8): a real scope with a hollow guide saved at
+    1,842 bytes. With the guide jaw it is refused BEFORE the PUT, naming what is hollow."""
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    hollow = GUIDE_CONFORMING.split("## Interview guide\n")[0] + \
+        "## Interview guide\n" + "Impact and dependency questions.\n" * 40
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md", hollow,
+                        user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out, out
+    assert "question" in out["error"], out["error"]
+    assert "put" not in state, "refused before anything reached SharePoint"
+
+
+def test_guide_problems_batch_with_contract_problems_in_one_refusal(monkeypatch):
+    """The one-refusal rule holds for the new jaw: a draft that is both under the contract
+    floor AND hollow learns both in ONE message, with one next_move."""
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    thin_and_hollow = ("## Scope\nx\n## Risk and environment\nx\n## Method parameters\nx\n"
+                       "## Interview guide\nA guide will be prepared.\n")
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md",
+                        thin_and_hollow, user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out, out
+    assert "problems with this draft" in out["error"], out["error"]
+    assert "1200" in out["error"] or "1,200" in out["error"]   # the contract floor
+    assert "question" in out["error"]                          # the guide jaw
+    assert out.get("next_move"), "a recoverable refusal carries a move"
+
+
+def test_the_redraft_next_move_survives_an_outline_save(monkeypatch):
+    """Live 2026-08-24 06:43:19: the model saved its outline preview, so the then-current
+    move — 'Send the complete document you previewed' — pointed at a document that never
+    existed, and the agent turned the refusal into an approval menu (one wasted press).
+    The move must script the recovery from what IS at hand: fix the numbered problems,
+    retry the same write now, the approval already given covers the corrected version."""
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    thin = ("## Scope\nx\n## Risk and environment\nx\n## Method parameters\nx\n"
+            "## Interview guide\nA guide will be prepared.\n")
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md",
+                        thin, user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out, out
+    nm = out.get("next_move") or ""
+    assert "previewed" not in nm, nm       # may point at a document that never existed
+    assert "retry this write" in nm, nm
+    assert "approval" in nm and "covers" in nm, nm
+
+
+def test_stage1_save_with_a_conforming_guide_links_the_print_view(monkeypatch, tmp_path):
+    """The deliverable: one click from the receipt to a printable guide. The page lands
+    under the (test-redirected) public tree and the receipt line carries the URL — which
+    rides human_line because the model already prints that verbatim; no tool-description
+    change, no republish."""
+    import dep_graph
+    monkeypatch.setattr(dep_graph, "PUBLIC", tmp_path / "graph-pages")
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md",
+                        GUIDE_CONFORMING, user_confirmed=True, expect=STAGE1_EXPECT)
+    assert out.get("written") is True, out
+    assert out.get("print_url") == \
+        "https://agent.ai4bcm.org/demo/graph/marschkamp/sales/guide.html"
+    assert out["verification"]["human_line"].endswith(
+        " [Print view](https://agent.ai4bcm.org/demo/graph/marschkamp/sales/guide.html)")
+    page = tmp_path / "graph-pages" / "marschkamp" / "sales" / "guide.html"
+    assert page.exists() and "order/EDI" in page.read_text(encoding="utf-8")
+
+
+def test_guide_render_failure_never_fails_the_save(monkeypatch, tmp_path):
+    """The hook is a courtesy, not a contract — mirror of the graph-regen boundary."""
+    import interview_guide
+    monkeypatch.setattr(interview_guide, "publish",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("render broke")))
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md",
+                        GUIDE_CONFORMING, user_confirmed=True, expect=STAGE1_EXPECT)
+    assert out.get("written") is True, out
+    assert "print_url" not in out
+    assert "Print view" not in out["verification"]["human_line"]
+
+
+def test_non_stage1_writes_never_touch_the_guide_renderer(monkeypatch):
+    """Mirror of test_plain_artifact_write_does_not_regen for the new hook."""
+    import interview_guide
+    calls = []
+    monkeypatch.setattr(interview_guide, "publish",
+                        lambda *a, **k: calls.append(a) or "https://x/guide.html")
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    out = gf.write_file("marschkamp", "output/sales/scratch-notes.md", FULL_CONTENT,
+                        user_confirmed=True, expect=FULL_EXPECT)
+    assert out.get("written") is True, out
+    assert calls == []
 
 
 def test_the_refusal_names_every_unread_source_at_once(monkeypatch):
@@ -1812,3 +2070,562 @@ def test_a_single_problem_still_reads_as_one_sentence(monkeypatch):
     assert "error" in out, out
     assert out["error"].startswith("write refused: "), out["error"]
     assert "\n" not in out["error"], f"one problem, one sentence: {out['error']!r}"
+
+
+# --- a refusal the agent can fix itself says how -----------------------------------------------
+# Live control case, 2026-08-20, one run, same missing reads, two tools:
+#   13:17:59  next_step  refused WITH next_move  -> the agent read both files 7 seconds later,
+#                                                   no user turn
+#   14:06:18  write      refused WITHOUT it      -> the agent rendered an approval menu and the
+#                                                   manager had to press 1 to authorise reads that
+#                                                   need no authorisation
+# Both are delivered with isError=True (`tool_result(payload, is_error="error" in payload)`), so
+# the flag is not the difference — the payload is. graph_files was the only refusal path in the
+# system returning a bare {"error": ...}: the referee (bia_referee.py) and every advance-gate
+# refusal (addendum_tools.py) already carry next_move.
+#
+# The presence of next_move IS the classification. A refusal the agent can resolve alone carries
+# one; a refusal that genuinely needs the human — missing approval — deliberately does not.
+
+def test_the_unread_source_refusal_tells_the_agent_its_next_move(monkeypatch):
+    state = {}
+    _mock(monkeypatch, _stage1_handler(state))
+    out = gf.write_file("marschkamp", STAGE1_PATH, STAGE1_CONTENT,
+                        user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out, out
+    nm = out.get("next_move")
+    assert nm, f"an agent-recoverable refusal must say what to do: {out}"
+    assert "read_company_file" in nm, nm
+    assert "02_BCM-Method/method.json" in nm and "dependency-register.json" in nm, nm
+    assert "retry" in nm.casefold(), "and that the write is then retried, not re-approved"
+
+
+def test_a_short_draft_refusal_tells_the_agent_to_resend_the_whole_document(monkeypatch):
+    state = {}
+    _mock(monkeypatch, _stage1_handler(state))
+    for path in ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"):
+        gf.note_read("marschkamp", path)
+    out = gf.write_file("marschkamp", STAGE1_PATH, "## Scope\ntoo short\n",
+                        user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out, out
+    nm = out.get("next_move")
+    assert nm, f"a size refusal is mechanical — the agent fixes it alone: {out}"
+    assert "retry" in nm.casefold(), nm
+
+
+def test_the_batched_refusal_carries_one_next_move_covering_every_problem(monkeypatch):
+    """Two problems, one refusal, one move — not a move per problem."""
+    state = {}
+    _mock(monkeypatch, _stage1_handler(state))
+    out = gf.write_file("marschkamp", STAGE1_PATH, "## Scope\nshort and unsourced\n",
+                        user_confirmed=True, expect=STAGE1_EXPECT)
+    assert "error" in out and "problems" in out["error"], out
+    nm = out.get("next_move")
+    assert nm, out
+    assert "read_company_file" in nm, f"the reads must survive the batching: {nm}"
+    assert "retry" in nm.casefold(), nm
+
+
+def test_a_refusal_that_genuinely_needs_the_user_carries_no_next_move(monkeypatch):
+    """The classification, made real. Missing approval is the one refusal the agent must NOT
+    resolve on its own — so it gets no move, and the absence is the signal."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    out = gf.write_file("marschkamp", "output/stage1.md", FULL_CONTENT,
+                        user_confirmed=False, expect=FULL_EXPECT)
+    assert "error" in out and "approval missing" in out["error"], out
+    assert "next_move" not in out, \
+        "an approval gate is not agent-recoverable; a move here would teach it to self-approve"
+
+
+# --- one legal company is not a question ------------------------------------------------------
+# 2026-08-20T14:37:49Z, Logistics run: the agent rendered two cards, then Copilot Studio stopped
+# and asked the manager "Please provide the name of the company you want to fetch a document for"
+# — a required-parameter slot-fill for a question with exactly one possible answer. NO tool call
+# reached the server that turn, so no server-side gate was involved; the schema alone did it.
+#
+# Same shape as the `mode` trap removed the same morning: a slot the agent must fill with a fact
+# the server already holds. `next_step` had already been given company="marschkamp" as a literal
+# default, which is the precedent AND a latent bug — it names a company the allowlist might not
+# contain. Deriving it fixes both.
+
+def test_a_single_allowlisted_company_answers_for_an_omitted_one(monkeypatch):
+    monkeypatch.setattr(gf, "COMPANIES", ("marschkamp",))
+    assert gf.resolve_company("") == "marschkamp"
+    assert gf.resolve_company(None) == "marschkamp"
+    assert gf.resolve_company("   ") == "marschkamp"
+
+
+def test_an_explicit_company_always_wins(monkeypatch):
+    monkeypatch.setattr(gf, "COMPANIES", ("marschkamp", "second-co"))
+    assert gf.resolve_company("second-co") == "second-co"
+    monkeypatch.setattr(gf, "COMPANIES", ("marschkamp",))
+    assert gf.resolve_company("second-co") == "second-co", \
+        "resolution must not silently redirect a named company to the sole one"
+
+
+def test_two_companies_make_it_a_real_question_again(monkeypatch):
+    """The default exists only while the answer is unambiguous. Add a second company and an
+    omitted one stays empty, so the existing unknown-company refusal asks — which is correct,
+    because then it IS a question."""
+    monkeypatch.setattr(gf, "COMPANIES", ("marschkamp", "second-co"))
+    assert gf.resolve_company("") == ""
+
+
+def test_an_omitted_company_reads_and_writes_against_the_sole_one(monkeypatch):
+    """End to end: the resolved company must reach the jail, not just the helper."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    out = gf.write_file(gf.resolve_company(""), "output/stage1.md", FULL_CONTENT,
+                        user_confirmed=True, expect=FULL_EXPECT)
+    assert out.get("written") is True, out
+    assert out["path"].startswith("marschkamp/"), out["path"]
+
+
+# ── Demo rooms: the room code decides storage (2026-08-24) ───────────────────────────
+# A room is a directory under ROOMS_DIR whose name matches BIA_SLUG and is NOT an
+# allowlisted company. Admission is directory existence — COMPANIES stays
+# ("marschkamp",), so DEFAULT_COMPANY and resolve_company keep their single-company
+# shape and the 2026-08-20 "which company?" regression cannot re-trigger.
+
+ROOM = "kranich-x7k2mp"
+
+
+@pytest.fixture()
+def room():
+    """One seeded room under the tmp ROOMS_DIR (conftest reroutes it); returns its code."""
+    d = gf.ROOMS_DIR / ROOM
+    (d / "output").mkdir(parents=True)
+    (d / "01_Organisation").mkdir()
+    (d / "02_BCM-Method").mkdir()
+    (d / "03_Dependencies").mkdir()
+    (d / ".versions").mkdir()
+    (d / "company-profile.md").write_text("# Kranich Logistik (fiktiv)", encoding="utf-8")
+    (d / "01_Organisation" / "org.md").write_text("org chart", encoding="utf-8")
+    (d / "02_BCM-Method" / "method.json").write_text('{"scale": "1-4"}', encoding="utf-8")
+    (d / "03_Dependencies" / "dependency-register.json").write_text(
+        '{"a1": {"name": "ERP"}}', encoding="utf-8")
+    (d / ".hidden.md").write_text("x", encoding="utf-8")
+    return ROOM
+
+
+@pytest.fixture()
+def room2():
+    """A second room — for pins that two codes never share state."""
+    (gf.ROOMS_DIR / "adler-m3p7q2").mkdir(parents=True)
+    return "adler-m3p7q2"
+
+
+@pytest.fixture()
+def no_network(monkeypatch):
+    """Tripwire: every Graph touch goes through _client(); a room operation must never."""
+    def _no_client():
+        raise AssertionError("room operation reached the network")
+    monkeypatch.setattr(gf, "_client", _no_client)
+
+
+def test_a_room_code_lists_its_directory_without_graph(room, no_network):
+    out = gf.list_files(room)
+    assert out["company"] == room
+    assert {f["name"] for f in out["files"]} == {
+        "company-profile.md", "01_Organisation", "02_BCM-Method", "03_Dependencies",
+        "output"}  # dot-names (.versions, .hidden.md) never listed
+    by_name = {f["name"]: f for f in out["files"]}
+    assert by_name["01_Organisation"]["is_folder"] is True
+    assert by_name["company-profile.md"]["is_folder"] is False
+    assert by_name["company-profile.md"]["path"] == "company-profile.md"
+
+
+def test_a_room_subfolder_lists_like_graph(room, no_network):
+    out = gf.list_files(room, "01_Organisation")
+    assert [f["name"] for f in out["files"]] == ["org.md"]
+
+
+def test_a_room_listing_miss_says_not_found(room, no_network):
+    assert "not found" in gf.list_files(room, "09_Nichts")["error"]
+
+
+def test_a_room_code_reads_a_file_without_graph(room, no_network):
+    out = gf.read_file(room, "company-profile.md")
+    assert out["content"] == "# Kranich Logistik (fiktiv)"
+    assert out["path"] == f"{room}/company-profile.md"
+    assert out["size"] == len(out["content"].encode("utf-8"))
+
+
+def test_a_room_read_miss_keeps_the_graph_404_sentence(room, no_network):
+    assert gf.read_file(room, "nope.md")["error"] == \
+        f"file not found: {room}/nope.md — call list_company_files to see what exists"
+
+
+def test_a_room_read_respects_max_read(room, no_network, monkeypatch):
+    monkeypatch.setattr(gf, "MAX_READ", 10)
+    (gf.ROOMS_DIR / room / "big.md").write_text("x" * 11, encoding="utf-8")
+    assert "file too large to read (11 bytes)" in gf.read_file(room, "big.md")["error"]
+
+
+def test_a_room_read_refuses_non_utf8(room, no_network):
+    (gf.ROOMS_DIR / room / "blob.bin").write_bytes(b"\xff\xfe\x00nope")
+    out = gf.read_file(room, "blob.bin")
+    assert "error" in out and "UTF-8" in out["error"]
+
+
+def test_an_unknown_code_gets_the_exact_unknown_company_error(room):
+    """Codes are never enumerated: the refusal names the allowlist and nothing else."""
+    err = gf.list_files("no-such-room")["error"]
+    assert err == "unknown company 'no-such-room' — allowed: marschkamp"
+    assert room not in err
+
+
+def test_a_room_dir_never_shadows_an_allowlisted_company(room):
+    """A directory named like an allowlisted company is dead weight, not a reroute:
+    marschkamp stays SharePoint even if someone drops a folder with its name."""
+    (gf.ROOMS_DIR / "marschkamp").mkdir()
+    assert gf._room_dir("marschkamp") is None
+    assert gf._room_dir("MARSCHKAMP") is None
+    assert gf._room_dir(f"  {ROOM.upper()}  ") is not None  # lower/strip, like _jail
+
+
+def test_room_codes_are_slug_jailed(room):
+    """The code becomes a path segment, so BIA_SLUG is the traversal guard."""
+    (gf.ROOMS_DIR / ".." / "escape").mkdir(exist_ok=True)
+    assert gf._room_dir("../escape") is None
+    assert gf._room_dir("a/b") is None
+    assert gf._room_dir(".versions") is None
+    assert gf._jail(f"{ROOM}", "../x") is None          # path rules unchanged inside a room
+    assert gf._jail(f"{ROOM}", "a\\b") is None
+    assert gf._jail(f"{ROOM}", "/abs") is None
+
+
+def test_marschkamp_still_hits_graph_with_rooms_present(room, monkeypatch):
+    def handler(request):
+        base = token_site_drive(request)
+        if base:
+            return base
+        assert "/drives/drive-1/root:/marschkamp:/children" in str(request.url)
+        return httpx.Response(200, json={"value": [
+            {"name": "company-profile.md", "size": 5, "file": {}}]})
+    _mock(monkeypatch, handler)
+    out = gf.list_files("marschkamp")
+    assert [f["name"] for f in out["files"]] == ["company-profile.md"]
+
+
+def test_default_company_and_empty_resolution_survive_rooms(room):
+    """COMPANIES stays ("marschkamp",): rooms must not reopen the which-company question."""
+    assert gf.DEFAULT_COMPANY == "marschkamp"
+    assert gf.resolve_company("") == "marschkamp"
+    assert gf.resolve_company(None) == "marschkamp"
+
+
+STAGE1_ROOM_PATH = "output/cutting/stage1-scope-and-guide.md"
+STAGE1_THIN = "# thin\n## Scope\n"
+STAGE1_THIN_EXPECT = {"markers": ["## Scope"], "min_bytes": 10}
+
+
+def test_a_room_gated_write_returns_the_full_receipt(room, no_network):
+    out = gf.write_file(room, "output/slaughter/scope-notes.md", FULL_CONTENT,
+                        user_confirmed=True, expect=FULL_EXPECT)
+    assert out.get("written") is True, out
+    assert out["mode"] == "create"
+    assert out["path"] == f"{room}/output/slaughter/scope-notes.md"
+    assert out["url"] == f"{gf.ROOMS_URL}/{room}/output/slaughter/scope-notes.md"
+    line = out["verification"]["human_line"]
+    assert "✓ Saved: output/slaughter/scope-notes.md" in line
+    assert "bytes" in line and "2 sections" in line
+    # No jail internals in the receipt PROSE, exactly like the Graph lane. The openable link
+    # appended after it (F6) is a URL and does carry the room code — that is the tester's own
+    # address, not a leak — so the rule is checked on the prose, not on the link.
+    prose = line.split(" [Open document](")[0]
+    assert f"{room}/" not in prose
+    assert f"[Open document]({gf.ROOMS_URL}/{room}/output/slaughter/scope-notes.md)" in line
+    assert out["next_move"] == "Tell the user the file is saved and continue the current stage."
+    disk = gf.ROOMS_DIR / room / "output" / "slaughter" / "scope-notes.md"
+    assert disk.read_text(encoding="utf-8") == FULL_CONTENT
+
+
+def test_a_room_overwrite_banks_a_version_and_names_the_room_history(room, no_network):
+    kw = dict(user_confirmed=True, expect=FULL_EXPECT)
+    gf.write_file(room, "output/slaughter/scope-notes.md", FULL_CONTENT, **kw)
+    out = gf.write_file(room, "output/slaughter/scope-notes.md", FULL_CONTENT + "more\n", **kw)
+    assert out.get("written") is True, out
+    assert out["mode"] == "overwrite"
+    line = out["verification"]["human_line"]
+    first = len(FULL_CONTENT.encode("utf-8"))
+    second = len((FULL_CONTENT + "more\n").encode("utf-8"))
+    assert f"{first:,} → {second:,} bytes" in line
+    assert "The previous version stays in the room's version history." in line
+    assert "SharePoint" not in line
+    versions = list((gf.ROOMS_DIR / room / ".versions").iterdir())
+    assert len(versions) == 1 and versions[0].name.endswith("-scope-notes.md")
+    assert versions[0].read_text(encoding="utf-8") == FULL_CONTENT  # the OLD bytes
+
+
+@pytest.mark.parametrize("kw", [
+    dict(path="output/x/y.md", content="hi"),                                  # approval missing
+    dict(path="notes.md", content="hi", user_confirmed=True),                  # outside output/
+    dict(path=".versions/x.md", content="hi", user_confirmed=True),            # version store unwritable
+    dict(path="output/x/y.md", content="", user_confirmed=True),               # empty content
+    dict(path="output/x/y.md", content="hi", user_confirmed=True),             # expect missing
+    dict(path=gf.RECORD_SAVE_PATH, content='{"a": 1}', user_confirmed=True),   # record by reference only
+    dict(path=gf.REGISTER_PATH, content='{"a": {"x": 1}}',
+         user_confirmed=True),                                                 # register floor
+    dict(path="output/.versions/x.md", content=FULL_CONTENT, user_confirmed=True,
+         expect=FULL_EXPECT),                                                  # dot-folder fails the slug rule
+])
+def test_room_refusals_match_the_graph_lane_word_for_word(room, no_network, kw):
+    """Every gate runs identically on both backends by construction — and pre-network:
+    the tripwire is live for BOTH lanes here, so a refusal that reached Graph would show."""
+    kw = dict(kw)
+    path, content = kw.pop("path"), kw.pop("content")
+    graph = gf.write_file("marschkamp", path, content, **kw)
+    local = gf.write_file(room, path, content, **kw)
+    assert "error" in graph and "error" in local
+    assert graph["error"] == local["error"]
+
+
+def test_a_room_save_token_writes_by_reference_and_consumes(room, no_network):
+    tok = gf.issue_save_token(room, {"activities": ["slaughter"]})
+    expected = gf._validated_records[room]["data"]
+    out = gf.write_file(room, gf.RECORD_SAVE_PATH, "", user_confirmed=True, save_token=tok)
+    assert out.get("written") is True, out
+    assert (gf.ROOMS_DIR / room / "output" / "bia-record.json").read_bytes() == expected
+    assert out["url"] == f"{gf.ROOMS_URL}/{room}/output/bia-record.json"
+    again = gf.write_file(room, gf.RECORD_SAVE_PATH, "", user_confirmed=True, save_token=tok)
+    assert "save_token unknown, superseded or expired" in again["error"]
+
+
+def test_a_room_approval_log_append_lands_locally(room, no_network):
+    out = gf.write_file(room, "approval-log.jsonl", '{"approved": "scope"}\n',
+                        user_confirmed=True)
+    assert out.get("written") is True, out
+    assert out["url"] == f"{gf.ROOMS_URL}/{room}/approval-log.jsonl"
+    assert (gf.ROOMS_DIR / room / "approval-log.jsonl").read_text(encoding="utf-8") == \
+        '{"approved": "scope"}\n'
+
+
+def test_a_room_stage1_write_without_reads_names_the_room_in_the_read_calls(room, no_network):
+    """§B.9 self-heals per room: the refusal's read calls carry the ROOM as company, so the
+    agent's very next reads land credit where the write needs it."""
+    out = gf.write_file(room, STAGE1_ROOM_PATH, STAGE1_THIN, user_confirmed=True,
+                        expect=STAGE1_THIN_EXPECT)
+    assert "error" in out
+    calls = out["next_move"]
+    assert f"read_company_file(company='{room}', path='02_BCM-Method/method.json')" in calls
+    assert (f"read_company_file(company='{room}', "
+            f"path='03_Dependencies/dependency-register.json')") in calls
+
+
+def test_read_credit_never_leaks_between_rooms(room, room2, no_network):
+    """The 2026-08-20 identity-plan regression shape: credit noted for one identity must
+    never satisfy another's gate."""
+    reads = ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json")
+    for p in reads:
+        gf.note_read(room2, p)
+    out = gf.write_file(room, STAGE1_ROOM_PATH, STAGE1_THIN, user_confirmed=True,
+                        expect=STAGE1_THIN_EXPECT)
+    assert f"company='{room}'" in out["next_move"], "room2's credit must not leak into room"
+    for p in reads:
+        gf.note_read(room, p)
+    out2 = gf.write_file(room, STAGE1_ROOM_PATH, STAGE1_THIN, user_confirmed=True,
+                        expect=STAGE1_THIN_EXPECT)
+    assert "error" in out2  # still refused — thin draft — but the reads are settled now
+    assert "read_company_file" not in (out2.get("next_move") or "")
+
+
+# T3 pins: the generated URLs come out per-room with ~zero changes, because dep_graph and
+# interview_guide are already per-company. Expected to pass off T1/T2 — a failure is a finding.
+
+def test_a_room_register_write_regens_the_public_graph_page(room, no_network, tmp_path):
+    payload = json.dumps(_fake_register(), ensure_ascii=False, indent=2) + "\n"
+    out = gf.write_file(room, gf.REGISTER_PATH, payload, user_confirmed=True)
+    assert out.get("written") is True, out
+    pages = tmp_path / "graph-pages" / room
+    assert (pages / "index.html").exists(), "register write must regen the room's graph page"
+    evidence = json.loads((pages / "evidence.json").read_text(encoding="utf-8"))
+    assert evidence["register"]["human_line"], "the room lane banks a real human_line"
+
+
+def test_a_room_stage1_write_links_the_room_print_view(room, no_network, tmp_path):
+    d = gf.ROOMS_DIR / room
+    (d / "02_BCM-Method" / "method.json").write_text(GUIDE_METHOD_JSON, encoding="utf-8")
+    (d / "03_Dependencies" / "dependency-register.json").write_text(
+        GUIDE_REGISTER_JSON, encoding="utf-8")
+    for p in ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"):
+        gf.note_read(room, p)
+    out = gf.write_file(room, "output/sales/stage1-scope-and-guide.md", GUIDE_CONFORMING,
+                        user_confirmed=True, expect=STAGE1_EXPECT)
+    assert out.get("written") is True, out
+    assert out.get("print_url") == \
+        f"https://agent.ai4bcm.org/demo/graph/{room}/sales/guide.html"
+    page = tmp_path / "graph-pages" / room / "sales" / "guide.html"
+    assert page.exists() and "order/EDI" in page.read_text(encoding="utf-8")
+
+
+def test_room_search_walks_locally_and_skips_fixtures(room, no_network):
+    d = gf.ROOMS_DIR / room
+    (d / "09_Evaluation").mkdir()
+    (d / "09_Evaluation" / "rt1-poison.md").write_text("OLGA MILEVSKA", encoding="utf-8")
+    (d / "output" / "bia-record.json").write_text('{"owner": "OLGA MILEVSKA"}',
+                                                 encoding="utf-8")
+    out = gf.search_files(room, "olga milevska")
+    assert [m["path"] for m in out["matches"]] == ["output/bia-record.json"]
+    assert out["excluded_fixture_paths"] == 1  # 09_Evaluation skipped before any read
+
+
+# ── F1 (2026-08-25): the Graph URLs quote the jailed path ────────────────────────────────
+# The jail rightly allows ':' '?' '#' '%' — real filenames carry them ("BIA 2025: final",
+# "coverage 100%.md") — but all four Graph URLs interpolated the path raw, so a '?' turned
+# the path's tail into a query string, a '#' dropped it as a fragment, and ':'/'%' were
+# mis-addressed. Everything but '/' is quoted; Graph's own ':' addressing stays raw.
+
+ODD_NAME = "08_Prior-Cycle/BIA 2025: v2? #final 100%.md"
+
+
+def _capture(seen):
+    def handler(request):
+        base = token_site_drive(request)
+        if base:
+            return base
+        seen["url"] = str(request.url)
+        seen["query"] = str(request.url.query, "ascii")
+        path = str(request.url.path)
+        if request.method == "PUT":
+            seen["stored"] = request.content
+            return httpx.Response(201, json={"id": "f1"})
+        if path.endswith(":/children"):
+            return httpx.Response(200, json={"value": []})
+        if path.endswith(":/content"):   # read-back echoes the PUT, like _artifact_handler
+            return httpx.Response(200, content=seen.get("stored", b"body"))
+        return httpx.Response(404)       # meta GET: new file
+    return handler
+
+
+def test_read_file_quotes_the_odd_path(monkeypatch):
+    seen = {}
+    _mock(monkeypatch, _capture(seen))
+    out = gf.read_file("marschkamp", ODD_NAME)
+    assert "error" not in out, out
+    assert seen["query"] == ""                        # '?' never became a query string
+    assert seen["url"].endswith(":/content")          # '#' never truncated the tail
+    for enc in ("%3A", "%3F", "%23", "%25"):
+        assert enc in seen["url"], seen["url"]
+
+
+def test_list_files_quotes_the_odd_subpath(monkeypatch):
+    seen = {}
+    _mock(monkeypatch, _capture(seen))
+    out = gf.list_files("marschkamp", "08_Prior: 2025? #x 100%")
+    assert "error" not in out, out
+    assert seen["query"] == ""
+    assert seen["url"].endswith(":/children")
+    for enc in ("%3A", "%3F", "%23", "%25"):
+        assert enc in seen["url"], seen["url"]
+
+
+def test_write_file_quotes_the_odd_path_on_meta_and_put(monkeypatch):
+    seen = {}
+    _mock(monkeypatch, _capture(seen))
+    out = gf.write_file("marschkamp", "output/packing/notes 100% #v2?.md", "x" * 40,
+                        user_confirmed=True, expect={"markers": ["xxxx"], "min_bytes": 10})
+    assert out.get("written") is True, out
+    assert seen["query"] == ""                        # the PUT is captured last
+    assert seen["url"].endswith(":/content")
+    for enc in ("%3F", "%23", "%25"):
+        assert enc in seen["url"], seen["url"]
+
+
+# ── F6 (2026-08-25): receipt URLs are markdown links, never bare ──────────────────────────
+# Live in bia3: human_line ended "Print view: <url>" and the model's next line began "Open
+# document:", so the web chat's autolinker swallowed the following word into the href and
+# served https://…/guide.htmlOpen — a 404. Markdown-wrapped links cannot be extended that
+# way. Runtime strings only: no payload cost, no schema change, no republish.
+
+def test_the_receipt_links_are_markdown_and_carry_no_bare_url(monkeypatch, tmp_path):
+    import dep_graph
+    monkeypatch.setattr(dep_graph, "PUBLIC", tmp_path / "graph-pages")
+    state = {}
+    _stage1_guide_world(monkeypatch, state)
+    out = gf.write_file("marschkamp", "output/sales/stage1-scope-and-guide.md",
+                        GUIDE_CONFORMING, user_confirmed=True, expect=STAGE1_EXPECT)
+    assert out.get("written") is True, out
+    line = out["verification"]["human_line"]
+    guide = "https://agent.ai4bcm.org/demo/graph/marschkamp/sales/guide.html"
+    assert f"[Print view]({guide})" in line, line
+    # no URL may sit outside markdown link syntax — that is the whole defect
+    for bare in re.finditer(r"(?<!\()https?://\S+", line):
+        assert False, f"bare URL in receipt: {bare.group(0)}"
+
+
+def test_the_openable_document_link_rides_the_receipt_as_markdown(monkeypatch):
+    """So the model has a verbatim link to print instead of composing its own bare
+    'Open document: <url>' from result['url'] — which is what produced '…-guide.mdStage'."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state, web_url="https://sharepoint.example/x.md"))
+    for path in ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"):
+        gf.note_read("marschkamp", path)
+    out = gf.write_file("marschkamp", "output/packing/notes.md", "x" * 40,
+                        user_confirmed=True, expect={"markers": ["xxxx"], "min_bytes": 10})
+    assert out.get("written") is True, out
+    line = out["verification"]["human_line"]
+    assert "[Open document](https://sharepoint.example/x.md)" in line, line
+    for bare in re.finditer(r"(?<!\()https?://\S+", line):
+        assert False, f"bare URL in receipt: {bare.group(0)}"
+
+
+def test_a_save_without_an_openable_url_still_gets_a_clean_receipt(monkeypatch):
+    """The room lane and any Graph reply without a webUrl: absent link, absent clause —
+    never an empty '[Open document]()' the renderer turns into a dead anchor."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))          # PUT returns no webUrl
+    for path in ("02_BCM-Method/method.json", "03_Dependencies/dependency-register.json"):
+        gf.note_read("marschkamp", path)
+    out = gf.write_file("marschkamp", "output/packing/notes.md", "x" * 40,
+                        user_confirmed=True, expect={"markers": ["xxxx"], "min_bytes": 10})
+    assert out.get("written") is True, out
+    assert "[Open document]" not in out["verification"]["human_line"]
+
+
+# ── §A.15 (2026-08-25): the four resource categories are contract markers ────────────────
+# Found 2026-08-24 by Bruno re-reading his own output, not by the check built to catch it:
+# a Stage 2 capture carrying two of the four required resource categories PASSED — the
+# absent ones were absent, not recorded as "not asked", and Stage 3 fills its template from
+# exactly those fields, so an absent category invites filling by inference. The prompt has
+# taught "capture it or record it as not asked" all along; instruction without enforcement
+# is the §B pattern. The markers now assert presence; the recorded STATE stays the prompt's
+# job (D-36: "not asked", never "none", never "n/a").
+
+A15_PATH = "output/cutting/stage2-interview-capture.md"
+A15_BASE = ("## Impacts\n" + "impact line\n" * 30 +
+               "## Dependencies\n" + "dependency line\n" * 30 +
+               "### Resource requirements by category\n"
+               "- People — carried from prior transcripts.\n"
+               "- IT/applications — partial, via ERP and weighing.\n"
+               "## Assumptions\nassumption line\n" * 3 +
+               "## Unresolved points\npoint\n" +
+               "## Gaps\ngap\n")
+A15_EXPECT = {"markers": ["## Impacts", "## Dependencies"], "min_bytes": 1200}
+
+
+def test_a_capture_missing_resource_categories_is_refused_naming_them(monkeypatch):
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    out = gf.write_file("marschkamp", A15_PATH, A15_BASE,
+                        user_confirmed=True, expect=A15_EXPECT)
+    assert "error" in out, out
+    assert "Buildings/seats" in out["error"] and "Suppliers" in out["error"], out["error"]
+    assert "put" not in state, "refused before anything reached SharePoint"
+
+
+def test_a_capture_recording_all_four_categories_saves_even_as_not_asked(monkeypatch):
+    """'Not asked' IS a recorded state — the enforcement must accept exactly what D-36's
+    owner-ruled amendment wrote, or the fix would refuse the ruling it encodes."""
+    state = {}
+    _mock(monkeypatch, _artifact_handler(state))
+    full = A15_BASE.replace(
+        "- IT/applications — partial, via ERP and weighing.\n",
+        "- IT/applications — partial, via ERP and weighing.\n"
+        "- Buildings/seats — not asked in this interview.\n"
+        "- Suppliers — not asked in this interview.\n")
+    out = gf.write_file("marschkamp", A15_PATH, full,
+                        user_confirmed=True, expect=A15_EXPECT)
+    assert out.get("written") is True, out
+    assert "put" in state

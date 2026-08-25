@@ -5,6 +5,7 @@ relay is never called."""
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -282,6 +283,29 @@ def test_every_persona_good_example_ends_open():
             assert voice_check.is_open_ended(ex["good"]), (
                 f"{persona['id']} example {ex['when']!r} ends closed: "
                 f"{ex['good'].splitlines()[-1]!r}")
+
+
+def test_every_persona_good_example_lays_its_options_out_one_per_line():
+    """F6 (2026-08-25) — the sibling of the test above, and the same lesson one level deeper.
+    `conduct.md` says a closing carries "at most two alternatives from next_moves, each on its
+    own line, numbered, the word after a dash". The "gate card done right" example closed them
+    INLINE instead — "…flag the gap (1), change a number first (2), or show the full text (3)"
+    — and in the 2026-08-25 `bia3` run the model copied the example rather than the rule: the
+    department menu, the activity bullets and every closing arrived on one line, which is
+    unscannable on a phone. An exemplar that contradicts the rule beats the rule."""
+    personas = json.loads(journeys.PERSONAS_FILE.read_text(encoding="utf-8"))
+    for persona in personas:
+        for ex in persona.get("examples") or []:
+            good = ex["good"]
+            inline = re.search(r"\(\d\)", good)
+            assert not inline, (
+                f"{persona['id']} example {ex['when']!r} numbers its options inline "
+                f"({inline.group(0)}) — options belong one per line (conduct.md)")
+            numbered = [ln for ln in good.splitlines() if re.match(r"^\d[ .)—-]", ln)]
+            if numbered:
+                assert len(numbered) >= 2, (
+                    f"{persona['id']} example {ex['when']!r} has one numbered line — a menu "
+                    f"is two or more, each on its own line: {numbered!r}")
 
 
 

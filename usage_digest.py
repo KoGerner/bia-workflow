@@ -4,7 +4,7 @@ Joins layer A (call_log.py rows: tool, stage, query, path, verdict) with layer B
 (pull_transcripts.py rows: Copilot Studio conversation transcripts) by time, and writes ONE
 vault note per ISO week:
 
-    02-Projects/BCI/ai-addendum/usage/bia-usage-digest-<year>-w<ww>.md
+    02-Projects/BCI/bia-workflow/usage/bia-usage-digest-<year>-w<ww>.md
 
 Per conversation: start time, surface, EVERY user prompt verbatim (emails and phone numbers
 masked — nothing else is altered; the point is to read what people type), tools called in
@@ -34,7 +34,7 @@ DIR = Path(os.environ.get("BIA_WORKFLOW_USAGE_DIR",
 # Under the app root, not /opt/brain/data: the MCP unit runs ProtectSystem=strict with
 # ReadWritePaths=/opt/brain/ai-addendum only — measured 2026-08-16, a row silently
 # never landed. data/ is gitignored at any depth (.gitignore:8).
-VAULT_OUT = Path(os.environ.get("BRAIN_VAULT_PATH", "/opt/brain-live")) / "02-Projects/BCI/ai-addendum/usage"
+VAULT_OUT = Path(os.environ.get("BRAIN_VAULT_PATH", "/opt/brain-live")) / "02-Projects/BCI/bia-workflow/usage"
 JOIN_SLACK = timedelta(minutes=5)
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")

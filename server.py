@@ -4,18 +4,22 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import functools
 import hmac
 import json
 import logging
 import os
+import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+                                 RedirectResponse)
 
 from typing_extensions import TypedDict
 
@@ -38,14 +42,6 @@ from retrieval import AddendumIndex
 # the tools still return CallToolResult with a text-content fallback for
 # older clients. total=False keeps every field optional so error returns ({"error", "message"})
 # validate against the same model — outputSchema is additive, never a hard gate.
-class WorkflowOutput(TypedDict, total=False):
-    id: str
-    title: str
-    text: str
-    url: str
-    metadata: dict[str, Any]
-
-
 class PromptTemplateOutput(TypedDict, total=False):
     task: str
     count: int
@@ -108,21 +104,6 @@ class FetchOutput(TypedDict, total=False):
     error: str
     message: str
     guided_journey: str
-
-
-class TopicItem(TypedDict, total=False):
-    id: str
-    title: str
-    breadcrumb: str
-    pp: str | None
-    section_type: str
-    url: str
-
-
-class TopicListOutput(TypedDict, total=False):
-    title: str
-    chunk_count: int
-    topics: list[TopicItem]
 
 
 class JourneyStageOutput(TypedDict, total=False):
@@ -198,6 +179,17 @@ READ_ONLY = ToolAnnotations(
     idempotentHint=True,
 )
 
+# F5 (2026-08-25): the three mutating tools say what they are instead of leaving the client
+# to guess from MCP defaults. Destructive: they replace bytes/fields in place (version
+# history is the undo, not the hint). Non-idempotent: a repeated write banks a new version,
+# and update_bia_activity refuses a no-op re-save by design.
+DESTRUCTIVE = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=True,
+    openWorldHint=False,
+    idempotentHint=False,
+)
+
 
 mcp = FastMCP(
     "bia-workflow",
@@ -216,9 +208,10 @@ mcp = FastMCP(
         allowed_hosts=[
             "127.0.0.1:*",
             "localhost:*",
-            # Both public names answer until Phase C7 (301 map) retires the old one.
+            # The one public name. addendum.aibcm.org retired by owner ruling 2026-08-24
+            # ("the new MCP is agent.ai4bcm.org … this is a decision") — a request on the
+            # old name now 421s here; nginx/cert/DNS teardown is the root-round remainder.
             "agent.ai4bcm.org",
-            "addendum.aibcm.org",
         ],
         allowed_origins=[
             "http://127.0.0.1:*",
@@ -309,6 +302,54 @@ async def root(_request):
     return PlainTextResponse("BCI AI Addendum MCP server. Use /mcp for MCP clients.")
 
 
+# ── demo-room claim lane (QR onboarding, 2026-08-25) ─────────────────────────────────
+# One QR on the event wall → GET /demo/claim → 302 to the personal-link page with the
+# first unclaimed biaN room. The path is deliberately unsecret: this repo has a public
+# sibling, so a token here would be theater, and the whole exposure is burning synthetic
+# rooms — recovery is one re-mint plus deleting .claims.jsonl. ponytail: no rate limit;
+# add nginx limit_req on this location if a bot ever finds it. The redirect base (the
+# password-derived live-<hash> embed page) must never sit in this repo (pinned by
+# test_mint_embed_base_prints_one_personal_link_per_room), so it is read per request
+# from <token dir>/embed-base — one operator-written line beside the token file.
+_CLAIM_CODE = re.compile(r"bia\d+")
+
+
+@mcp.custom_route("/demo/claim", methods=["GET"], include_in_schema=False)
+async def claim_room(request):
+    rooms = graph_files.ROOMS_DIR
+    try:
+        base = (rooms.parent / "embed-base").read_text(encoding="utf-8").strip()
+    except OSError:
+        return PlainTextResponse(
+            "room claiming is not configured (embed-base file missing)", status_code=503)
+    held = request.cookies.get("bia_room", "")
+    if _CLAIM_CODE.fullmatch(held) and (rooms / held).is_dir():
+        return RedirectResponse(f"{base}?room={held}", status_code=302)
+    rooms.mkdir(parents=True, exist_ok=True)
+    log = rooms / ".claims.jsonl"
+    with open(rooms / ".claims.lock", "a", encoding="utf-8") as lf:
+        # ponytail: single-loop uvicorn already serializes requests through this blocking
+        # section; the flock is for a future multi-worker unit, not today's.
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        claimed = set()
+        if log.exists():
+            claimed = {json.loads(line)["room"] for line in
+                       log.read_text(encoding="utf-8").splitlines() if line.strip()}
+        free = [p.name for p in rooms.iterdir()
+                if p.is_dir() and _CLAIM_CODE.fullmatch(p.name) and p.name not in claimed]
+        if not free:
+            return HTMLResponse(
+                "<h1>All demo rooms are taken</h1>"
+                "<p>Find Konstantin — a fresh batch is one command away.</p>")
+        code = min(free, key=lambda n: int(n[3:]))
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"room": code, "ts": int(time.time()),
+                                "ua": request.headers.get("user-agent", "")[:120]}) + "\n")
+    resp = RedirectResponse(f"{base}?room={code}", status_code=302)
+    resp.set_cookie("bia_room", code, max_age=14 * 24 * 3600, path="/demo", samesite="lax")
+    return resp
+
+
 @mcp.tool(
     name="search",
     title="Search AI Addendum",
@@ -347,25 +388,13 @@ def search(
 @mcp.tool(
     name="fetch",
     title="Fetch AI Addendum Section",
-    description="Use this when the user needs the full text for one AI Addendum section id returned by search or list_topics.",
+    description="Use this when the user needs the full text for one AI Addendum section id returned by search.",
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
 def fetch(id: str, ctx: Context | None = None) -> Annotated[CallToolResult, FetchOutput]:
     payload = addendum_tools.fetch_fn(id)
     return tool_result(payload, is_error="error" in payload)
-
-
-@mcp.tool(
-    name="list_topics",
-    title="List AI Addendum Topics",
-    description="Use this when the user needs to browse the addendum map before choosing a section.",
-    annotations=READ_ONLY,
-)
-@call_log.logged  # visibility layer A: one JSON line per call, never content
-def list_topics(ctx: Context | None = None) -> Annotated[CallToolResult, TopicListOutput]:
-    payload = addendum_tools.list_topics_fn()
-    return tool_result(payload)
 
 
 @mcp.tool(
@@ -379,7 +408,9 @@ def list_topics(ctx: Context | None = None) -> Annotated[CallToolResult, TopicLi
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def list_company_files(company: str, subpath: str = "", ctx: Context | None = None) -> CallToolResult:
+def list_company_files(*, company: str = graph_files.DEFAULT_COMPANY, subpath: str = "",
+                       ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.list_files(company, subpath)
     return tool_result(payload, is_error="error" in payload)
 
@@ -399,7 +430,9 @@ def list_company_files(company: str, subpath: str = "", ctx: Context | None = No
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def search_company_files(company: str, query: str, ctx: Context | None = None) -> CallToolResult:
+def search_company_files(*, company: str = graph_files.DEFAULT_COMPANY, query: str,
+                         ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.search_files(company, query)
     return tool_result(payload, is_error="error" in payload)
 
@@ -416,7 +449,9 @@ def search_company_files(company: str, query: str, ctx: Context | None = None) -
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def read_company_file(company: str, path: str, ctx: Context | None = None) -> CallToolResult:
+def read_company_file(*, company: str = graph_files.DEFAULT_COMPANY, path: str,
+                      ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.read_file(company, path)
     if "error" not in payload:
         # The agent's own read. The advance gate asks for exactly this set — see
@@ -450,12 +485,15 @@ def read_company_file(company: str, path: str, ctx: Context | None = None) -> Ca
                 "documents (the stage card's document_contracts) are additionally held to the "
                 "journey's own required sections and minimum size — a headline summary is "
                 "never the stage document.",
+    annotations=DESTRUCTIVE,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def write_company_file(company: str, path: str, content: str = "", user_confirmed: bool = False,
+def write_company_file(*, company: str = graph_files.DEFAULT_COMPANY, path: str, content: str = "",
+                       user_confirmed: bool = False,
                        mode: str = "create", expect: dict[str, Any] | None = None,
                        save_token: str | None = None,
                        ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.write_file(company, path, content,
                                      user_confirmed=user_confirmed, mode=mode, expect=expect,
                                      save_token=save_token)
@@ -477,7 +515,9 @@ def write_company_file(company: str, path: str, content: str = "", user_confirme
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def resource_dependencies(company: str, asset: str, ctx: Context | None = None) -> CallToolResult:
+def resource_dependencies(*, company: str = graph_files.DEFAULT_COMPANY, asset: str,
+                          ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = dep_graph.answer(company, asset, graph_files.read_file)
     return tool_result(payload, is_error="error" in payload)
 
@@ -495,11 +535,13 @@ def resource_dependencies(company: str, asset: str, ctx: Context | None = None) 
         "user_confirmed may ONLY be set true after the user approved the exact field "
         "changes (the diff) with named sign-off in chat."
     ),
+    annotations=DESTRUCTIVE,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def update_register_entry(company: str, asset_id: str, changes: str | dict[str, Any],
+def update_register_entry(*, company: str = graph_files.DEFAULT_COMPANY, asset_id: str, changes: str | dict[str, Any],
                           user_confirmed: bool = False,
                           ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.update_register_entry(company, asset_id, changes,
                                                 user_confirmed=user_confirmed)
     return tool_result(payload, is_error="error" in payload)
@@ -531,12 +573,14 @@ def update_register_entry(company: str, asset_id: str, changes: str | dict[str, 
         "user which fields those are and that only re-running the BIA stage can fix "
         "them, because this tool must never edit analysis."
     ),
+    annotations=DESTRUCTIVE,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
-def update_bia_activity(company: str, activity: str, changes: str | dict[str, Any],
+def update_bia_activity(*, company: str = graph_files.DEFAULT_COMPANY, activity: str, changes: str | dict[str, Any],
                         approved_by: str = "", reason: str = "",
                         user_confirmed: bool = False,
                         ctx: Context | None = None) -> CallToolResult:
+    company = graph_files.resolve_company(company)
     payload = graph_files.update_bia_activity(company, activity, changes,
                                               approved_by=approved_by, reason=reason,
                                               user_confirmed=user_confirmed)
@@ -578,14 +622,18 @@ def update_bia_activity(company: str, activity: str, changes: str | dict[str, An
         "(PP4 boundary). A PASS is provenance/consistency, NOT approval — owner sign-off still "
         "applies. A PASS also returns save_token: save output/bia-record.json by passing that "
         "token to write_company_file with content omitted — the server writes the validated "
-        "bytes itself; never re-type the record. READ-ONLY: it judges, never writes."
+        "bytes itself; never re-type the record. READ-ONLY: it judges, never writes. "
+        "Omit record entirely to referee the BIA record already saved at output/bia-record.json: "
+        "the server reads that file and judges its bytes, so a saved record is never re-typed."
     ),
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
 def validate_bia_record(
-    company: str, record: str | dict[str, Any], ctx: Context | None = None
+    *, company: str = graph_files.DEFAULT_COMPANY,
+    record: str | dict[str, Any] | None = None, ctx: Context | None = None
 ) -> Annotated[CallToolResult, ValidateRecordOutput]:
+    company = graph_files.resolve_company(company)
     payload = bia_referee.validate_bia_record(company, record)
     return tool_result(payload, is_error="error" in payload)
 
@@ -608,15 +656,20 @@ def validate_bia_record(
         "you how to stage). Present ONE stage at a time and wait for the user to approve before "
         "calling next_step. The BIA journey ends at the PP4 solution-design handoff — never "
         "draft a continuity plan directly from a BIA. journey_id is optional and defaults to "
-        "'run-bia' — omit it rather than asking the user for an id."
+        "'run-bia' — omit it rather than asking the user for an id. company is optional and "
+        "defaults to 'marschkamp'. Pass the company (room) code the user is working in — the "
+        "same value you pass to the other company tools — so the stage-1 card carries THEIR "
+        "company data."
     ),
     annotations=READ_ONLY,
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
 def start_journey(
-    journey_id: str = "run-bia", ctx: Context | None = None
+    journey_id: str = "run-bia", company: str = graph_files.DEFAULT_COMPANY,
+    ctx: Context | None = None
 ) -> Annotated[CallToolResult, JourneyStageOutput]:
-    payload = addendum_tools.start_journey_fn(str(journey_id).strip() or "run-bia")
+    payload = addendum_tools.start_journey_fn(str(journey_id).strip() or "run-bia",
+                                              company=graph_files.resolve_company(company))
     return tool_result(payload, is_error="error" in payload)
 
 
@@ -643,7 +696,7 @@ def start_journey(
 )
 @call_log.logged  # visibility layer A: one JSON line per call, never content
 def next_step(
-    journey_id: str = "run-bia", stage_id: str = "", company: str = "marschkamp",
+    journey_id: str = "run-bia", stage_id: str = "", company: str = graph_files.DEFAULT_COMPANY,
     bia: str = "", ctx: Context | None = None
 ) -> Annotated[CallToolResult, JourneyStageOutput]:
     if not str(stage_id).strip():
@@ -653,35 +706,18 @@ def next_step(
                                        "user for internal ids — use the stage the user "
                                        "just approved or named."}, is_error=True)
     payload = addendum_tools.next_step_fn(str(journey_id).strip() or "run-bia", stage_id,
-                                          company=str(company or "").strip() or "marschkamp",
+                                          company=graph_files.resolve_company(company),
                                           bia=str(bia or "").strip() or None)
     return tool_result(payload, is_error="error" in payload)
 
 
-# Prompts are ungated by design: their copy_paste_prompt content is generic BCM
-# template guidance, not confidential addendum text (which stays behind the bearer gate).
-@mcp.prompt(
-    name="run_bia",
-    title="Run a BIA end-to-end",
-    description="Guided BIA: scope, questionnaire, capture, analysis, reviewed report. One stage at a time.",
-)
-def run_bia_prompt() -> str:
-    return addendum_tools.journey_prompt_text("run-bia")
-
-
-@mcp.resource("addendum://journeys", name="Journey catalog", mime_type="application/json")
-def journeys_resource() -> str:
-    return json.dumps(addendum_tools.journeys_catalog(), ensure_ascii=False)
-
-
-@mcp.resource("addendum://personas", name="Persona catalog", mime_type="application/json")
-def personas_resource() -> str:
-    return json.dumps(addendum_tools.personas_catalog(), ensure_ascii=False)
-
-
-@mcp.resource("addendum://journey/{journey_id}", name="Journey detail", mime_type="application/json")
-def journey_resource(journey_id: str) -> str:
-    return json.dumps(addendum_tools.journey_detail(journey_id), ensure_ascii=False)
+# The MCP prompt (`run_bia`) and the three `addendum://` resources were removed 2026-08-24
+# (ponytail-audit C7/C8, owner-ruled "as recommended" 2026-08-17 and re-instructed today).
+# No client on record ever read them: Copilot Studio wires TOOLS only — `ms-agent-install.md`
+# has never mentioned a prompt or resource — and the call log has no row for either surface
+# because only tools are logged. They cost four registrations, four backing functions in
+# addendum_tools, a second stage renderer in journeys.py, and two tests, to serve nobody.
+# Restoring them is a manifest republish (§A.3), so their return must be deliberate.
 
 
 @mcp.tool(

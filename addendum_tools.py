@@ -1,6 +1,7 @@
 """Pure-Python tool bodies behind the MCP server."""
 
 from __future__ import annotations
+import json
 import os
 import re
 from pathlib import Path
@@ -95,10 +96,6 @@ def fetch_fn(chunk_id):
     return payload
 
 
-def list_topics_fn():
-    return _idx().topics()
-
-
 def get_workflow_fn(workflow_id):
     idx = _idx()
     c = idx.get(workflow_id)
@@ -116,7 +113,120 @@ def get_workflow_fn(workflow_id):
     }
 
 
-def start_journey_fn(journey_id):
+# Backlog §B.9, built 2026-08-23 after the first post-§A.2 live run still cost 6 presses:
+# six instructions failed to make the model read before drafting, and the write jaw's refusal
+# turns recovery into approval presses. So the server serves stage 1's material inside the
+# payload and grants read credit for what it served — the first draft is grounded by
+# construction and the unread-source refusal structurally cannot fire on stage 1. The cap is
+# sized to what the per-stage payload budget already tolerates (stage 1 static 12,184 chars
+# against the 14,360 the largest stage ships); truncation and parse/fetch failures both fail
+# toward NO credit, so the gate protects exactly as before whenever serving did not happen.
+# Sized top-down from the payload budget, not bottom-up from hope: the static budget anchor
+# pins every stage at 14,500 chars and stage 1 renders at 12,204 (re-measured 2026-08-24
+# after the guide prescription landed), so the runtime digest may spend 14,500 − 12,204.
+# The cap counts EVERYTHING appended — headers included; the first accounting missed them
+# and the real register was silently dropped 9 chars short. Measured 2026-08-23 against the
+# real register (33 activities): ~2,264 all-in. Growth past ~40 activities trips the
+# fail-closed no-credit branch — revisit the format then, not the cap. A stage-1 prompt
+# edit that grows the static render must re-run this arithmetic in the same commit.
+DIGEST_MAX_CHARS = 2296
+_DIGEST_HEADER = "\n\nCompany data for this stage, read live at journey start:\n"
+_REGISTER_HEADER = ("Recorded activities by department (tier, MTPD) — propose from these, "
+                    "never invent:\n")
+
+
+def _method_summary(content):
+    m = json.loads(content)
+    parts = []
+    if m.get("version") or m.get("method_version"):
+        parts.append(f"Method version {m.get('version') or m.get('method_version')}")
+    names = [re.sub(r"\s*\([^)]*\)", "", str(s.get("name") or s.get("id")))
+             for s in m.get("scenarios", []) if isinstance(s, dict)]
+    if names:
+        parts.append(f"{len(names)} impact categories: {', '.join(names)}")
+    if m.get("time_horizons"):
+        parts.append(f"horizons: {', '.join(m['time_horizons'])}")
+    if m.get("intolerability_threshold") is not None:
+        parts.append(f"intolerability threshold {m['intolerability_threshold']}")
+    if not parts:
+        raise ValueError("method.json carries none of the expected keys")
+    return "Approved method — " + "; ".join(parts) + "."
+
+
+# A short clock token inside free-prose MTPD text ("clocks open within 0-4 h of an outage"
+# -> "0-4 h"). The real register records MTPDs as sentences; serving the sentence would spend
+# the whole cap on prose the scope card only needs the number from.
+_CLOCK_RE = re.compile(r"[≈~]?\s?\d+(?:\s?[–-]\s?\d+)?\s?(?:h\b|d\b|day s?\b|days?\b|weeks?\b)")
+
+
+def _register_activity_lines(content):
+    """One line per DEPARTMENT (name once, activities folded in), carrying the ranking data
+    stage 1's next_moves demand: tier (the supplying asset's criticality) and a short MTPD
+    clock per activity. Names only would invite fabricated rankings (adversarial review,
+    amendment 1). Compressed to survive the real register — measured 2026-08-23: the naive
+    one-line-per-activity form with asset names and full MTPD prose hit 5,687 chars against
+    the 2,000 cap, and the fail-closed rule then dropped the register entirely. Asset names
+    are deliberately absent: they are stage-3 material, and the register itself is one read
+    away when the model wants them."""
+    reg = json.loads(content)
+    assets = {k: v for k, v in reg.items() if isinstance(v, dict)}  # dep_graph's own shape rule
+    by_dept = {}
+    for a in assets.values():
+        for c in a.get("consumers") or []:
+            if not isinstance(c, dict) or not c.get("activity"):
+                continue
+            dept = str(c.get("dept") or "unassigned")
+            acts = by_dept.setdefault(dept, {})
+            if c["activity"] in acts:
+                continue
+            tags = []
+            if a.get("criticality") is not None:
+                tags.append(f"tier {a['criticality']}")
+            clock = _CLOCK_RE.search(str(c.get("consumer_mtpd") or ""))
+            if clock:
+                # the header's "(tier, MTPD)" legend carries the label; the "≈" carries nothing
+                tags.append(clock.group(0).strip().lstrip("≈~").strip())
+            acts[c["activity"]] = f" ({', '.join(tags)})" if tags else ""
+    if not by_dept:
+        raise ValueError("register carries no consumer activities")
+    return [f"- {dept}: " + "; ".join(f"{act}{tag}" for act, tag in sorted(acts.items()))
+            for dept, acts in sorted(by_dept.items())]
+
+
+def _stage1_digest(company, stage):
+    """(digest_text, credited_paths) for the stage's requires_reads, or ("", []).
+
+    Credit is granted per path ONLY when that path's content made it into the digest — the
+    same standard graph_files applies to reads (content that reached the model counts,
+    referee-internal reads never did). Any fetch/parse failure or a cap that would drop a
+    source entirely fails toward no digest line and no credit for that path, leaving the
+    write jaw to protect exactly as it does today."""
+    sections, credited = [], []
+    budget = DIGEST_MAX_CHARS - len(_DIGEST_HEADER)
+    for path in getattr(stage, "requires_reads", []):
+        try:
+            got = _fetch_artifact(company, path)
+            if "error" in got:
+                continue
+            if path.endswith("method.json"):
+                text = _method_summary(got.get("content", ""))
+            elif path.endswith("dependency-register.json"):
+                text = _REGISTER_HEADER + "\n".join(_register_activity_lines(got.get("content", "")))
+            else:
+                continue  # a path this builder has no shape for earns no credit
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            continue
+        if len(text) + 1 > budget:
+            continue  # amendment 2: a source the cap cannot fit is unserved — no credit
+        sections.append(text)
+        credited.append(path)
+        budget -= len(text) + 1
+    if not sections:
+        return "", []
+    return _DIGEST_HEADER + "\n".join(sections), credited
+
+
+def start_journey_fn(journey_id, company=None):
     js = _journeys_map()
     j = js.get(journey_id)
     if not j:
@@ -129,12 +239,20 @@ def start_journey_fn(journey_id):
                 "available_journeys": [
                     {"id": x.id, "title": x.title, "when_to_use": x.when_to_use} for x in js.values()
                 ]}
-    graph_files.forget_reads()   # a journey is actually starting; it has read nothing yet
-    set_risk_task(j.risk_task)   # ... and its governance classification is the journey's, not the model's
+    set_risk_task(j.risk_task)   # its governance classification is the journey's, not the model's
     s = j.first_stage()
     payload = journey_engine.render_stage_tool(j, s, 1, len(j.stages))
     payload["overview"] = j.when_to_use
     payload["total_stages"] = len(j.stages)
+    # §A.17: the digest follows the company the user is IN. Absent param = the pre-room
+    # behaviour (resolved default), so the un-republished manifest keeps its exact lane.
+    company = graph_files.resolve_company(company or graph_files.DEFAULT_COMPANY)
+    if company and payload.get("copy_paste_prompt"):
+        digest, credited = _stage1_digest(company, s)
+        if digest:
+            payload["copy_paste_prompt"] += digest
+            for path in credited:
+                graph_files.note_read(company, path)
     return journey_engine.keep_voice_last(payload)
 
 
@@ -162,13 +280,15 @@ def _bia_arg_error(stage, stage_num, bia):
     return None
 
 
-def _advance_gate_error(stage, stage_num, company, bia=None):
+def _advance_gate_error(stage, stage_num, company, bia=None, found=None):
     """P7 I-1 part 2: a named completed stage advances only when its canonical artifacts
     are saved and meet the journey-owned contract — closes the referent-substitution
     route (I-1 as fired) and the skipped-artifact class (I-5). Pattern paths ('*') are
     write-time contracts only: the owner side-quest's N/A branch is register-dependent
     and not server-derivable. Fails CLOSED on a data-source outage, legibly.
-    `<bia>` paths are read in the folder the agent names (bia=), never guessed."""
+    `<bia>` paths are read in the folder the agent names (bia=), never guessed.
+    `found`, when a list, collects each conforming document's facts (§A.16): the gate is
+    the only place that knows the advance passed BECAUSE the document already exists."""
     # W4/W7/W12: the method already tells stage 1 to offer options from the company's own
     # material and to suggest what the interviewee did not name. Nothing checked, and the
     # 2026-08-19 run called start_journey then read nothing at all. The instruction was
@@ -245,6 +365,9 @@ def _advance_gate_error(stage, stage_num, company, bia=None):
                                 "advance."),
                     "next_move": (f"Write {path} with sections "
                                   f"{', '.join(c['markers'])}, then call next_step again")}
+        if found is not None:
+            found.append({"name": name, "path": path, "size": size,
+                          "saved": got.get("modified") or "unknown"})
     return None
 
 
@@ -284,15 +407,32 @@ def next_step_fn(journey_id, stage_id, company="marschkamp", bia=None):
         return {"error": "not_found", "message": f"No stage '{stage_id}' in '{journey_id}'.",
                 "stage_ids": [s.id for s in j.stages]}
     company = (str(company).strip() if company else "") or "marschkamp"
+    # §A.16: only the FIRST stage's advance collects found-document facts — that is the turn
+    # every re-run walks through (the incident's silent skip), and later cards have no room
+    # (stage 4 renders 140 chars under the 14,500 anchor the digest arithmetic protects).
+    found: list = [] if j.stage_index(cur.id) == 0 else None
     gate = _advance_gate_error(cur, j.stage_index(cur.id) + 1, company,
-                               (str(bia).strip() if bia else "") or None)
+                               (str(bia).strip() if bia else "") or None, found=found)
     if gate:
         return gate
     if not cur.next:
         return {"journey_id": j.id, "stage_id": stage_id, "done": True,
                 "message": "Journey complete. Final human approval gate applies before you act."}
     nxt = j.stage(cur.next)
-    return journey_engine.render_stage_tool(j, nxt, j.stage_index(nxt.id) + 1, len(j.stages))
+    payload = journey_engine.render_stage_tool(j, nxt, j.stage_index(nxt.id) + 1, len(j.stages))
+    if found:
+        # Facts server-side, condition model-side: there is no session id (settled, §7 of the
+        # tracker), so only the model can tell "just saved by this user" from "left over from
+        # an earlier run" — it has the conversation. Positive conditional, refusal-text lane.
+        payload["already_saved"] = {
+            "documents": found,
+            "note": ("If the user saved this document in this conversation, carry on. "
+                     "Otherwise say what was found and when it was saved, then offer: open "
+                     "the saved document and carry on, redo the stage, or pick another "
+                     "process."),
+        }
+        payload = journey_engine.keep_voice_last(payload)
+    return payload
 
 
 def get_prompt_template_fn(task, risk_level=None):
@@ -310,44 +450,11 @@ def get_prompt_template_fn(task, risk_level=None):
     ]}
 
 
-_personas: dict | None = None
-
-
-def _personas_map():
-    global _personas
-    if _personas is None:
-        _personas = journey_engine.load_personas()
-    return _personas
-
-
-def journeys_catalog():
-    js = _journeys_map()
-    return {"journeys": [
-        {"id": j.id, "title": j.title, "persona": j.persona,
-         "when_to_use": j.when_to_use, "stage_count": len(j.stages)} for j in js.values()
-    ]}
-
-
-def personas_catalog():
-    return {"personas": [
-        {"id": p.get("id", ""), "name": p.get("name", ""), "voice": p.get("voice", ""),
-         "default_journey": p.get("default_journey", "")} for p in _personas_map().values()
-    ]}
-
-
-def journey_detail(journey_id):
-    j = _journeys_map().get(journey_id)
-    if not j:
-        return {"error": "not_found", "message": f"No journey '{journey_id}'."}
-    return {"id": j.id, "title": j.title, "persona": j.persona, "when_to_use": j.when_to_use,
-            "stages": [{"id": s.id, "goal": s.goal} for s in j.stages]}
-
-
-def journey_prompt_text(journey_id):
-    j = _journeys_map().get(journey_id)
-    if not j:
-        return f"No journey '{journey_id}'."
-    return journey_engine.render_stage_prompt(j, j.first_stage(), 1, len(j.stages))
+# journeys_catalog / personas_catalog / journey_detail / journey_prompt_text (and the
+# _personas memo) went with the MCP prompt+resource surface on 2026-08-24 — each had exactly
+# one caller, its own registration in server.py, and nothing read those registrations.
+# `design/personas.json` itself stays: voice_check.py reads it directly for the bad-example
+# needles, which is a live consumer.
 
 
 # Set by start_journey, cleared with it. ponytail: process-global, like graph_files._reads_seen

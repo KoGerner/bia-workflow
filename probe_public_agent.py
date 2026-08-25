@@ -37,11 +37,19 @@ LISTING_MARKERS = ("01_Organisation", "03_Dependencies")
 
 
 def webchat_url(page: Path = PAGE) -> str:
-    """The iframe src from the published embed — the probe follows the page, not a constant."""
-    m = re.search(r'src="(https://copilotstudio\.microsoft\.com/[^"]+)"',
+    """Microsoft's own hosted canvas for this agent, taken FROM the embed page so the probe
+    follows the page rather than a constant.
+
+    Until 2026-08-25 that was the page's iframe src. The page now renders its own WebChat
+    canvas (§A.18: it must speak the room prompt itself, which a cross-origin frame cannot),
+    and the hosted URL survives as the header's "Chat blank?" fallback link — so the probe
+    reads src= OR href=. Deliberately still the hosted canvas: this probe drives a browser
+    to prove the PUBLISHED agent answers anonymously, and the hosted page is the surface
+    that needs no token minting of its own."""
+    m = re.search(r'(?:src|href)="(https://copilotstudio\.microsoft\.com/[^"]+)"',
                   page.read_text(encoding="utf-8"))
     if not m:
-        raise SystemExit(f"no copilotstudio iframe src in {page}")
+        raise SystemExit(f"no copilotstudio agent URL (src= or href=) in {page}")
     return m.group(1)
 
 

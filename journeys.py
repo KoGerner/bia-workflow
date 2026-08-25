@@ -269,9 +269,10 @@ def render_stage_tool(j: Journey, s: Stage, stage_num: int, total: int) -> dict:
         "connector_guidance": s.connector_guidance,
         "do_not_paste": s.do_not_paste, "approval_gate": s.approval_gate,
         # reviewer_checklist + expected_output stay off the stage TOOL payload (2026-08-19
-        # payload budget, Task 6b): both still render via render_stage_prompt (fix round 2
-        # added the expected_output line there — it never had one before) and stay readable
-        # straight off the Stage object (yaml) either way.
+        # payload budget, Task 6b). Until 2026-08-24 they also rendered into the MCP prompt
+        # surface — which no client ever read, so they have reached no model for as long as
+        # they have existed here. The fields stay in the yaml, where they are the author's
+        # and the reviewer's checklist, readable straight off the Stage object.
         "cites": s.cites, "next": s.next,
         # Literal advance call: Copilot's orchestrator slot-fills next_step's stage_id from
         # visible context and stalled on "Please provide the stage_id" (live 2026-07-21) when
@@ -311,34 +312,6 @@ def _bia_arg(j: Journey) -> str:
     return ", bia='<bia>'" if uses else ""
 
 
-def render_stage_prompt(j: Journey, s: Stage, stage_num: int, total: int) -> str:
-    lines = [
-        f"# {j.title} — {s.name or f'stage {stage_num} of {total}'}: {s.goal}",
-        "",
-        "Work through this journey ONE stage at a time. Do not skip ahead.",
-        "AI prepares; you decide, approve, and act.",
-        "",
-    ]
-    if s.copy_paste_prompt:
-        lines += ["**Copy-paste prompt:**", "```", s.copy_paste_prompt.rstrip(), "```", ""]
-    if s.tools_to_use:
-        lines.append(f"**Tools to use:** {', '.join(s.tools_to_use)}")
-    if s.do_not_paste:
-        lines.append(f"**Do NOT paste:** {s.do_not_paste}")
-    if s.connector_guidance:
-        lines.append(f"**Connector guidance:** {s.connector_guidance}")
-    if s.approval_gate:
-        lines.append(f"**Approval gate:** {s.approval_gate}")
-    if s.reviewer_checklist:
-        lines.append("**Reviewer checklist:** " + "; ".join(s.reviewer_checklist))
-    if s.expected_output:
-        lines.append(f"**Expected output:** {s.expected_output}")
-    for c in s.document_contracts:
-        need = ", ".join(c["markers"]) if c["markers"] else "no fixed sections"
-        lines.append(f"**Stage document:** {c['path']} — required sections: {need}; "
-                     f"at least {c['min_bytes']} bytes.")
-    if s.cites:
-        lines.append(f"**Addendum breadcrumbs:** {', '.join(s.cites)}")
-    nxt = f"call next_step('{j.id}', '{s.id}'{_bia_arg(j)})" if s.next else "the journey is complete"
-    lines += ["", f"When this stage is approved, {nxt}."]
-    return "\n".join(lines)
+# render_stage_prompt (the second stage renderer) went with the MCP prompt surface on
+# 2026-08-24 — its only production caller was the `run_bia` prompt registration, which no
+# client on record ever fetched. render_stage_tool is the one renderer.

@@ -3,9 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- LOAD-BEARING: this page lives at an unguessable path, which is the entire gate. Without
-     this, the iframe request would send that path to Microsoft in the Referer header. -->
+     this, requests to Microsoft would carry that path in the Referer header. -->
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex,nofollow">
+<script src="https://cdn.botframework.com/botframework-webchat/latest/webchat.js"></script>
 <title>BIA working session — BIA-Workflow</title>
 <!--
   Authenticated workspace for the Copilot Studio agent "BIA-Workflow (public)" (Web app
@@ -26,24 +27,20 @@
      page cannot read the conversation (cross-origin), so any such marker would be invented.
      The list is a map, not a tracker. Do not add state you cannot observe.
 
-  2. Nothing styles the conversation itself. Bubbles, the composer, the send control and the
-     reactions are Microsoft's, inside a cross-origin frame: no parent CSS reaches them and
-     there is no API to drive them. The shell is all that is ours.
+  2. The conversation IS ours since 2026-08-25 (custom canvas): WebChat renders into
+     #webchat, so styleOptions and the .webchat rules below own the bubbles and the spacing
+     between turns (F6's web half). Rule 1 still holds — read state from the DOM WebChat
+     owns, never invent progress the parent cannot observe.
 
-  3. --ms-chrome pulls the iframe up to clip Copilot's own teal title bar, which otherwise
-     repeats the wordmark in a colour that fights the palette. Over-clipping is the safe
-     direction (the message list scrolls, so hidden pixels cost nothing); under-clipping leaves
-     a teal sliver. If Microsoft changes that bar's height, this is the only value to retune.
+  3. There is no teal title bar to clip any more — that was Microsoft's frame chrome, and
+     --ms-chrome went with it. Nothing replaces it: the canvas starts at the transcript.
 
-  4. "Chat blank? Open the assistant directly", in the context header, is LOAD-BEARING — do
-     not tidy it away.
-     Embedded cross-origin, the webchat's directline/botdetails call 401s where it returns 200
-     top-level: Chrome tolerates it and connects, but Firefox with Enhanced Tracking Protection
-     blocks the third-party storage the Direct Line handshake needs and renders a permanently
-     blank frame (measured 2026-07-24). That link opens the same src top-level, where the
-     storage is first-party and it works. It is always visible because it cannot be shown on
-     demand: a cross-origin frame is unreadable from here, and onload fires for the broken
-     state too, so there is no signal to trigger on.
+  4. "Chat blank? Open the assistant directly" is now an ordinary fallback, kept because it
+     costs one line and Microsoft's own canvas is a useful second opinion. Its original
+     reason is GONE: the 2026-07-24 blank frame was Firefox with Enhanced Tracking Protection
+     blocking the third-party storage the Direct Line handshake needed INSIDE the iframe.
+     Here the token fetch and the handshake are first-party, so that failure mode cannot
+     occur — verify it in Firefox with ETP on before deleting this note.
 
   Deploy: /var/www/addendum-demo/live-<sha256(password)[:16]>/index.html, served by the generic
   /demo/ alias — no nginx location of its own. The unguessable path IS the gate; the styled
@@ -79,7 +76,7 @@
   --accent:var(--ink);--bg:var(--parchment);--field:var(--linen);--line:var(--linen);
   --muted:var(--graphite);--card:var(--bone);--on-field:var(--ink);--on-field-2:#5c584e;
   --rule-field:rgba(0,0,0,.16);
-  --ms-chrome:56px;--rail:21.5rem;--col:58rem;--arc:2.75rem;--r:6px;--pill:var(--r-pill)
+  --rail:21.5rem;--col:58rem;--arc:2.75rem;--r:6px;--pill:var(--r-pill)
 }
 /* Kept, against the reference's light-only rule, because this page runs inside Teams and a
    parchment slab in a dark shell is worse than a dark parchment (owner ruling, 2026-08-20).
@@ -116,6 +113,8 @@ display:flex;flex-direction:column;padding:1.4rem 1.35rem 0}
 .lab{margin:0 0 .35rem;font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
 text-transform:uppercase;color:var(--on-field-2)}
 
+.roomurl{margin:.1rem 0 0;font-size:.75rem;line-height:1.4;color:var(--on-field-2);
+word-break:break-all}
 .prompt{margin:0 0 .45rem;padding:.45rem .55rem;font-size:.8rem;line-height:1.42;
 background:var(--card);border:1px solid var(--rule-field);border-radius:var(--r)}
 /* Small: it labels a one-off convenience, not a primary action. */
@@ -188,8 +187,12 @@ text-decoration:none;white-space:nowrap}
 .frame{width:min(var(--col),100%);margin:1.05rem 0 0;flex:1 1 auto;min-height:0;
 max-height:33rem;position:relative;overflow:hidden;background:var(--card);
 border:1px solid var(--line);border-radius:var(--r-card)}
-.frame iframe{position:absolute;left:0;width:100%;
-top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;display:block}
+.frame #webchat{position:absolute;inset:0}
+/* F6's web half: air between turns is OURS now, not a rule the model has to remember.
+   Two stable webchat classnames; if a WebChat upgrade renames them the turns go dense
+   again and nothing else breaks — that is the whole blast radius. */
+#webchat .webchat__basic-transcript__activity{margin-bottom:.9rem}
+#webchat .webchat__bubble__content{line-height:1.5}
 
 /* ══ narrow: rail stacks above, map collapses, nothing scrolls sideways ════ */
 @media(max-width:60rem){
@@ -215,9 +218,23 @@ top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;di
   <div class="rail-in">
     <p class="wordmark">BIA-Workflow</p>
 
-    <p class="lab">Say this first</p>
-    <p class="prompt" id="p">Start a BIA for marschkamp. Take me through it one stage at a time.</p>
-    <div><button class="copy" id="c" type="button">Copy</button></div>
+    <div id="brandopener">
+      <p class="lab">Say this first</p>
+      <p class="prompt" id="p">Start a BIA for marschkamp. Take me through it one stage at a time.</p>
+      <div><button class="copy" id="c" type="button">Copy</button></div>
+    </div>
+
+    <!-- Demo rooms (2026-08-24): the code IS the routing — said as company, it lands the whole
+         run in that room. A personal link (?room=<code>) fills the prompt, links the files
+         line, and swaps the two marschkamp doors below to the visitor's own room; without the
+         param this stays the brand-room page and the URLs remain a stated pattern, never
+         navigation (rooms URLs are handout material, secret by code). -->
+    <p class="lab" id="roomlab">Have a room code? Say this instead</p>
+    <p class="prompt" id="p2">Start a BIA for room &lt;your code&gt;. Take me through it one
+      stage at a time.</p>
+    <div><button class="copy" id="c2" type="button">Copy</button></div>
+    <p class="roomurl" id="roomurl">Your room&rsquo;s files, live as the run writes them:
+      agent.ai4bcm.org/demo/rooms/&lt;your&nbsp;code&gt;/</p>
 
     <details class="map" id="map" open>
       <summary>Workflow map</summary>
@@ -255,7 +272,8 @@ top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;di
            which is that folder's. Re-check the same way after any re-share; a link minted on the
            library instead would expose every room. It carries its own link password, so a visitor
            with no tenant identity can open it — but they need that password too. -->
-      <a href="https://kgerner.sharepoint.com/:f:/s/AIBCM/IgCkJLzUJ1L_SLjrNhsxjSUkAbxYgbmbhAKSXi3V67yhfB8?e=Xymdir"
+      <a id="fileslink"
+         href="https://kgerner.sharepoint.com/:f:/s/AIBCM/IgCkJLzUJ1L_SLjrNhsxjSUkAbxYgbmbhAKSXi3V67yhfB8?e=Xymdir"
          target="_blank" rel="noopener">
         <strong>Company files</strong>
         <span>The marschkamp data room — what the assistant reads, and where it saves</span>
@@ -264,7 +282,7 @@ top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;di
            URL you hand to a specific person. Here it sits inside the signed-in workspace, where
            the reader already has this company's data room open above it (owner ruling
            2026-08-20). -->
-      <a href="/demo/graph/marschkamp/" target="_blank" rel="noopener">
+      <a id="graphlink" href="/demo/graph/marschkamp/" target="_blank" rel="noopener">
         <strong>Dependency graph</strong>
         <span>What depends on what, and where a deadline is already breached</span>
       </a>
@@ -280,7 +298,7 @@ top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;di
   <header class="ctx">
     <div>
       <h1>BIA working session</h1>
-      <p><span>Marschkamp</span><i>·</i><span>Six-stage workflow</span><i>·</i>
+      <p><span id="roomname">Marschkamp</span><i>·</i><span>Six-stage workflow</span><i>·</i>
         <span>Synthetic data only</span></p>
     </div>
     <a class="direct"
@@ -289,22 +307,52 @@ top:calc(-1 * var(--ms-chrome));height:calc(100% + var(--ms-chrome));border:0;di
   </header>
 
   <div class="frame">
-    <iframe
-      src="https://copilotstudio.microsoft.com/environments/Default-41716283-7cb5-47fe-996f-813640630454/bots/cre2b_BIAWorkflowpublic/webchat?__version__=2"
-      title="BIA-Workflow assistant"
-      allow="microphone; clipboard-write"></iframe>
+    <div id="webchat" role="region" aria-label="BIA-Workflow assistant"></div>
   </div>
 </main>
 
 <script>
+// Personal links (?room=<code>): the handout is one URL and the page does the rest — the
+// prompt arrives filled (nothing to hand-edit), the files line becomes the link it names,
+// and the two marschkamp doors swap to the visitor's own room. The param is jailed to the
+// same slug shape the server enforces and only the validated value reaches textContent and
+// href, so a hostile ?room= is inert. Without the param this is exactly the brand-room page.
+let roomPrompt = null;   // set only inside the slug jail below; the canvas sends it
+const room = (new URLSearchParams(location.search).get('room') || '').trim().toLowerCase();
+if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(room) && room !== 'marschkamp') {
+  document.getElementById('brandopener').style.display = 'none';
+  document.getElementById('roomlab').textContent =
+    'Sent for you when the chat opens — copy it only if you use the direct chat link';
+  roomPrompt = 'Start a BIA for room ' + room + '. Take me through it one stage at a time.';
+  document.getElementById('p2').textContent = roomPrompt;
+  const ru = document.getElementById('roomurl');
+  ru.textContent = 'Your room’s files, live as the run writes them: ';
+  const a = document.createElement('a');
+  a.href = '/demo/rooms/' + room + '/';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = 'agent.ai4bcm.org/demo/rooms/' + room + '/';
+  ru.appendChild(a);
+  const files = document.getElementById('fileslink');
+  files.href = '/demo/rooms/' + room + '/';
+  files.querySelector('span').textContent =
+    'Your room — what the assistant reads, and where it saves';
+  document.getElementById('graphlink').href = '/demo/graph/' + room + '/';
+  // The header named the brand room on every personal page — a bia3 tester read
+  // "MARSCHKAMP" while working in bia3, and it is the one place they can check which
+  // room they are in (support protocol: "which room are you?").
+  document.getElementById('roomname').textContent = 'Room ' + room;
+}
+
 // The workflow map is a disclosure only where the rail sits above the chat.
 const map = document.getElementById('map');
 const narrow = window.matchMedia('(max-width:60rem)');
 const sync = () => { map.open = !narrow.matches; };
 narrow.addEventListener('change', sync); sync();
 
-document.getElementById('c').addEventListener('click', async function () {
-  const p = document.getElementById('p');
+for (const [btn, src] of [['c', 'p'], ['c2', 'p2']])
+document.getElementById(btn).addEventListener('click', async function () {
+  const p = document.getElementById(src);
   try {
     await navigator.clipboard.writeText(p.textContent.trim());
     this.textContent = 'Copied';
@@ -319,4 +367,82 @@ document.getElementById('c').addEventListener('click', async function () {
   this.dataset.done = '';
   setTimeout(() => { this.textContent = 'Copy'; delete this.dataset.done; }, 2000);
 });
+
+// ── the canvas (2026-08-25) ───────────────────────────────────────────────────────────
+// Was Microsoft's hosted iframe. Three things came with that frame and all three are fixed
+// by owning it: the room binding died with each conversation (§A.18 — a tester's second
+// chat wrote into marschkamp), Firefox with ETP rendered a permanent blank (third-party
+// storage), and no CSS reached the bubbles (F6).
+//
+// TOKEN_ENDPOINT is public BY DESIGN for a no-authentication agent, and adds no exposure:
+// the environment id and schema name in it are already in the direct-chat link above. The
+// unguessable page path stays the only gate.
+//
+// THE DOMAIN IS NOT OPTIONAL. The tenant is EU, and its Direct Line gateway is
+// europe.directline.botframework.com — discovered at runtime from the same tenant host, so a
+// geo move needs no edit here. The default gateway ACCEPTS this token and returns 201 on
+// POST /conversations, which is exactly why the first build shipped without this lookup: a
+// created conversation is not a reachable bot, and the browser showed "Unable to connect"
+// (2026-08-25). On the EU gateway the bot answers in ~16 s. If the lookup ever fails we let
+// WebChat use its default rather than hard-code a geo — a visible error beats a wrong region.
+const TENANT_API = 'https://default417162837cb547fe996f8136406304.54.environment.api.powerplatform.com';
+const TOKEN_ENDPOINT = TENANT_API +
+  '/powervirtualagents/botsbyschema/cre2b_BIAWorkflowpublic/directline/token?api-version=2022-03-01-preview';
+const REGIONAL_ENDPOINT = TENANT_API +
+  '/powervirtualagents/regionalchannelsettings?api-version=2022-03-01-preview';
+
+(async function canvas () {
+  const el = document.getElementById('webchat');
+  try {
+    let domain = null;
+    try {
+      const settings = await (await fetch(REGIONAL_ENDPOINT)).json();
+      domain = settings.channelUrlsById.directline + 'v3/directline';
+    } catch (e) { console.warn('regional lookup failed, using the default gateway:', e); }
+    const conversationInfo = await (await fetch(TOKEN_ENDPOINT)).json();
+    // Palette comes from the page's own tokens, read live so dark mode is not re-invented.
+    const css = getComputedStyle(document.documentElement);
+    const v = n => css.getPropertyValue(n).trim();
+    const store = window.WebChat.createStore({}, ({ dispatch }) => next => action => {
+      if (action.type === 'DIRECT_LINE/CONNECT_FULFILLED') {
+        // the greeting the hosted frame used to trigger for us …
+        dispatch({ type: 'WEB_CHAT/SEND_EVENT',
+                   payload: { name: 'startConversation', value: '' } });
+        // … then the room binding, page-owned, on EVERY conversation (§A.18). The brand
+        // page leaves roomPrompt null and sends nothing.
+        if (roomPrompt) {
+          dispatch({ type: 'WEB_CHAT/SEND_MESSAGE', payload: { text: roomPrompt } });
+        }
+      }
+      return next(action);
+    });
+    window.WebChat.renderWebChat({
+      directLine: window.WebChat.createDirectLine(
+        domain ? { domain, token: conversationInfo.token }
+               : { token: conversationInfo.token }),
+      store,
+      locale: 'en-GB',
+      styleOptions: {
+        backgroundColor: 'transparent',
+        hideUploadButton: true,
+        bubbleBackground: v('--card'), bubbleTextColor: v('--ink'),
+        bubbleBorderColor: v('--line'), bubbleBorderWidth: 1, bubbleBorderRadius: 6,
+        bubbleFromUserBackground: v('--field'), bubbleFromUserTextColor: v('--on-field'),
+        bubbleFromUserBorderColor: v('--line'), bubbleFromUserBorderWidth: 1,
+        bubbleFromUserBorderRadius: 6,
+        paddingRegular: 12, bubbleMinHeight: 0,
+        sendBoxBackground: v('--card'), sendBoxTextColor: v('--ink'),
+        sendBoxBorderTop: '1px solid ' + v('--line'),
+        sendBoxButtonColor: v('--muted'), sendBoxButtonColorOnHover: v('--ink'),
+        suggestedActionBorderRadius: 6, timestampColor: v('--muted')
+      }
+    }, el);
+  } catch (err) {
+    // Never a silent blank: the fallback link in the header is the visible recovery.
+    console.error('canvas failed to connect:', err);
+    el.textContent = 'The assistant could not load here. Use “Chat blank? Open the ' +
+                     'assistant directly” at the top of this page.';
+    el.style.padding = '1rem';
+  }
+})();
 </script>

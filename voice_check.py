@@ -92,9 +92,6 @@ def is_next_turn(turn: str) -> bool: return any(l.strip().startswith("Next:") fo
 # markdown at all. Not ours (codex-acp 1.4.0, session-scoped, predates the voice work) — but the
 # owner caught it by eye on a run this script had already graded PASS.
 def is_escaped_newline_turn(turn: str) -> bool: return "\\n" in turn
-def last_nonempty_line(turn: str) -> str:
-    return next((line.strip() for line in reversed(turn.splitlines()) if line.strip()), "")
-
 def is_option_menu(text: str) -> bool:
     """Two or more options, numbered consecutively from 1 or 2 — however laid out or punctuated.
     Consecutiveness is what keeps "the scope covers 4 sites and 6 activities" from reading as a

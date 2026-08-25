@@ -2,7 +2,7 @@
 
 The durable **why** behind the product. The **how** is [`ms-agent-install.md`](ms-agent-install.md);
 **validating** it was the red-team + acceptance runbook (retired 2026-08-18, git history);
-live **status** is the vault board `02-Projects/BCI/ai-addendum/bia-teams-progress.md`. Migrated
+live **status** is the vault board `02-Projects/BCI/bia-workflow/bia-teams-progress.md`. Migrated
 into the repo 2026-07-20 from the vault research note; the full 2026-07-19 research (decision
 matrix, Langdock/n8n/Slack comparison, MS fact-check, practitioner evidence) is archived at
 `99-Archive/04-Resources/enterprise-agents-teams-research{,-v1}.md`.
@@ -41,7 +41,10 @@ dependency-register (`03_Dependencies/dependency-register.json`, read + gated wr
 supplier-sla, regulatory-obligations, method calibration (`method.json`), approval ledger (gated
 append), interview transcripts (`07_Interviews/*.md`, read), and the BIA output plus the structured
 `output/bia-record.json` the referee checks (gated write). A missing artifact is legal — the agent
-asks instead of inventing.
+asks instead of inventing. Since 2026-08-24 this contract instantiates per demo room: a room is a
+complete copy of the pack under `/srv/addendum/demo-rooms/<code>/`, the room code stands in for
+the company name on every tool, and the same roles, gates and ledgers apply inside it (§ Room
+code decides storage).
 
 ## Verified MS feature state / the licensing reality (checked 2026-07-19)
 
@@ -123,3 +126,28 @@ carry the render clock, so a page built from a three-day-old register still read
 <today>" — it now dates each source (`_data_age`); and a record *read failure* used to fall
 through to `record = None` and publish a page with every BIA activity missing while the write
 reported success — only a genuine 404 now means "this room has no BIA" (`generate`).
+
+## Room code decides storage (2026-08-24)
+
+~50 external BCM managers (event cohort first, standing link after) must each run the BIA journey
+against their **own** complete copy of the fictional room, and must **see and download** the files
+their run creates — which SharePoint cannot give anonymous users. Per-`output/` isolation fails
+because runs also mutate room-level files (dependency register, approval log). The owner picked
+the data-plane swap under the `graph_files` seam; the ruling deliberately un-pauses the C4-shaped
+work paused 2026-08-20.
+
+**The mechanism: room code = company slug = storage folder = download URL. The channel never
+matters** — all three channels (MS Teams Copilot agent, the Bruno buzz seat, the public web agent)
+hit one endpoint with one bearer, and the server provably cannot tell them apart
+(`ms-agent-install.md` §Isolation). A room is a directory under `/srv/addendum/demo-rooms/`;
+admission is directory existence, never a `COMPANIES` entry — a second allowlist entry would flip
+every tool's `company` default to `""` and re-open the measured 2026-08-20 "which company?"
+regression. Routing lands at the four Graph I/O sites in `graph_files.py` only, so every gate,
+receipt, regen hook and the referee run identically on both backends by construction; the room
+lane banks the old bytes to `.versions/` before an overwrite, standing in for SharePoint's
+version history. Codes are `<word>-<6 typeable chars>` (~30 bits, no i/l/o/0/1): the root listing
+404s, dotpaths 404 inside the rooms location, fail2ban stands in front, and a guessed code yields
+synthetic fiction. Minting is an operator script (`mint_demo_rooms.py`) — an agent-callable mint
+is an abuse surface — and rooms are disposable: recovery is refresh-seed + re-mint. Accepted
+openly: within-room H3 unchanged, no per-room write locking (Graph had none either), `.versions/`
+growth unbounded, `bia-file` write/delete stay Graph-only on rooms.

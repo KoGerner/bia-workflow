@@ -42,3 +42,15 @@ def test_the_secret_is_found_without_the_service_environment(monkeypatch):
 def test_an_explicit_token_file_still_wins(monkeypatch):
     monkeypatch.setenv("BIA_WORKFLOW_TOKEN_FILE", "/tmp/elsewhere/secret")
     assert str(rc.secret_path()) == "/tmp/elsewhere/graph-secret"
+
+
+def test_a_room_slug_is_refused_with_a_filesystem_pointer():
+    """T6 (2026-08-24): without the guard a room slug raw-DELETEs against Graph, gets a
+    404, prints 'already absent' — and the room file survives on disk. A lying no-op.
+    Refused by shape instead, pointing at the room's real data plane."""
+    import graph_files
+    (graph_files.ROOMS_DIR / "kranich-x7k2mp" / "output").mkdir(parents=True)
+    with pytest.raises(SystemExit) as e:
+        rc.check("kranich-x7k2mp", "output/slaughter/stage1-scope-and-guide.md")
+    msg = str(e.value)
+    assert "demo room" in msg and "re-mint" in msg, msg

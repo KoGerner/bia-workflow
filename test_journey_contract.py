@@ -12,6 +12,7 @@ floors per stage) and the next_step advance gate that closes the referent-substi
 hole (halfB 19:40:02, 367 B stub PUT).
 """
 import ast
+import re
 import inspect
 import json
 from pathlib import Path
@@ -118,8 +119,13 @@ def test_run_bia_pins_canonical_document_contracts():
         got = [(c["path"], c["min_bytes"]) for c in stage.document_contracts]
         assert got == CANON[stage.id], stage.id
     stage2 = bia.stage("capture-transcript").document_contracts[0]
+    # §A.15 (2026-08-25): the four resource categories joined the markers — a capture that
+    # never names one of them refuses instead of passing quietly (the 2026-08-24 capture
+    # carried two of four and PASSED; the absent ones were absent, not "not asked"). The
+    # recorded STATE stays the prompt's job (D-36); the marker asserts presence.
     assert stage2["markers"] == ["## Impacts", "## Dependencies", "## Assumptions",
-                                 "## Unresolved points", "## Gaps"]
+                                 "## Unresolved points", "## Gaps",
+                                 "People", "IT/applications", "Buildings/seats", "Suppliers"]
 
 
 def test_render_stage_tool_carries_contract_block():
@@ -127,16 +133,12 @@ def test_render_stage_tool_carries_contract_block():
     s2 = bia.stage("capture-transcript")
     payload = journey_engine.render_stage_tool(bia, s2, 2, 6)
     assert payload["document_contracts"] == s2.document_contracts  # single source, no drift
-    plan = journey_engine.load_journeys()["draft-plan"]
-    p1 = plan.first_stage()
+    # a contract-free stage renders without the key (draft-plan was the natural fixture for
+    # this until its 2026-08-24 retirement; a synthetic journey pins the same behaviour)
+    bare = journey_engine.Journey(id="p", persona="x", title="T", when_to_use="w",
+                                  stages=[journey_engine.Stage(id="s1", goal="g")])
     assert "document_contracts" not in journey_engine.render_stage_tool(
-        plan, p1, 1, len(plan.stages))
-
-
-def test_render_stage_prompt_names_stage_artifact():
-    bia = _bia()
-    text = journey_engine.render_stage_prompt(bia, bia.first_stage(), 1, 6)
-    assert "output/<bia>/stage1-scope-and-guide.md" in text
+        bare, bare.first_stage(), 1, 1)
 
 
 def test_stage4_pins_the_activity_name_to_the_saved_record():
@@ -387,8 +389,6 @@ def test_run_bia_stage_names_are_the_traditional_five():
     card_3a = journey_engine.render_stage_tool(bia, owner_loop, 4, 6)["card"]
     assert card_3a == f"**{owner_loop.name}**"
     assert " of " not in card_3a
-    text = journey_engine.render_stage_prompt(bia, bia.first_stage(), 1, 6)
-    assert text.startswith("# Run a BIA end-to-end — Stage 1 · Identification of scope:")
 
 
 def test_bold_is_the_only_difference_between_the_card_text_and_the_card():
@@ -405,10 +405,13 @@ def test_bold_is_the_only_difference_between_the_card_text_and_the_card():
 
 
 def test_card_label_falls_back_for_a_journey_with_no_stage_names():
-    """draft-plan's stages carry no `name` field at all (unlike run-bia's) — `_card_label`
-    must not crash on a label-free journey. With no name to derive a label from, it falls
-    back to the stage's own name (empty here) and then to a plain position fraction."""
-    plan = journey_engine.load_journeys()["draft-plan"]
+    """`_card_label` must not crash on a label-free journey: with no `name` to derive a
+    label from it falls back to a plain position fraction. (draft-plan was the natural
+    fixture until its 2026-08-24 retirement; the generic engine still allows nameless
+    stages, so the behaviour keeps its pin with a synthetic journey.)"""
+    plan = journey_engine.Journey(id="p", persona="x", title="T", when_to_use="w",
+                                  stages=[journey_engine.Stage(id="s1", goal="g"),
+                                          journey_engine.Stage(id="s2", goal="g")])
     s1 = plan.first_stage()
     assert s1.name == ""
     assert journey_engine._card_text(plan, s1, 1, len(plan.stages)) == \
@@ -548,8 +551,17 @@ def test_run_bia_carries_the_w33_digest_lessons():
     assert "most critical" in flat1 and "never invent criticality" in flat1
     assert "'Questionnaire'" in flat1 and "pre-interview request" in flat1
     assert "Good Practice Guidelines" in flat1  # "what standard are you using?"
+    # P4 (2026-08-25): the scoping funnel is collapsed — the reply to "no department yet /
+    # which is most critical" IS the one numbered department menu (an OFFER to rank was a
+    # menu about a menu, one press buying nothing), and identification is read-first:
+    # propose what the files record, with an amend option, instead of ask-then-confirm.
+    assert "one numbered department menu" in flat1
+    assert "one number picks the scope" in flat1
+    assert "read-first" in flat1 and "amend" in flat1
+    assert "ask only for what no file records" in flat1
     offers1 = " ".join(m["offer"] for m in s1.next_moves)
-    assert "Rank the recorded activities" in offers1 and "interview guide" in offers1
+    assert "department menu" in offers1 and "interview guide" in offers1
+    assert "Rank the recorded activities" not in offers1  # the two-step funnel's first press
     s2 = bia.stage("capture-transcript")
     flat2 = " ".join(s2.copy_paste_prompt.split())
     assert "one question per turn" in flat2
@@ -691,6 +703,18 @@ def test_protocol_puts_the_risk_result_in_the_file_not_the_turn():
 
 # --- 2026-08-19: "Bruno sounds like a colleague" — Task 0, the falsification anchor -------
 
+def test_stage1_prescribes_the_headings_the_jaw_enforces():
+    """Cross-repo drift tripwire: the guide jaw (interview_guide.py) refuses documents
+    missing the short-version and bring-list blocks, and the WORDING it checks for must be
+    the wording stage 1's prompt prescribes — the yaml lives in the independently edited
+    public design repo, so nothing but this test couples them."""
+    import interview_guide
+    s = _bia().first_stage()
+    assert interview_guide.SHORT_MARKER in s.copy_paste_prompt
+    assert interview_guide.BRING_MARKER in s.copy_paste_prompt
+    assert "### <activity>" in s.copy_paste_prompt or "### " in s.copy_paste_prompt
+
+
 def test_stage_payload_budget_2026_08_19():
     """Falsification anchor for the 2026-08-19 voice work: every later change to
     STAGE_PROTOCOL or a stage payload must pay for its own mass instead of drifting for
@@ -771,6 +795,20 @@ def test_verify_for_yourself_blocks_collapse_to_one_source_link():
     # 3a (the owner side-quest) never carried a Verify block — nothing to collapse there.
     s3a = _stage("id: asset-owner-capture", "id: draft-and-review")
     assert "Source: [" not in s3a
+
+
+def test_protocol_demands_air_between_blocks():
+    """F6's second finding, scoped by the owner 2026-08-25: content is right, the turn is just
+    too dense to scan — no vertical space between the card, the paragraphs, the menu and the
+    closing, and menu options flowed inline. The embed renders exactly what the model emits
+    (verbatim strings came out right, composed text came out flat), so the fix is one positive
+    layout rule in the protocol. Blank lines, not lone newlines: a single newline is a soft
+    break some renderers collapse; a blank line is a paragraph everywhere. Funded by trimming
+    the announce specimen, which personas.json bad example #1 already carries verbatim-shaped."""
+    p = journey_engine.STAGE_PROTOCOL
+    assert "A blank line after every block; each numbered option on its own line." in p
+    # the specimen that paid for it is gone, the pinned rule head stays (see its own test)
+    assert "I'm applying the BIA facilitation method" not in p
 
 
 def test_stage_protocol_renders_one_citation_link_per_card():
@@ -855,10 +893,17 @@ def test_worked_examples_obey_the_rule_they_teach():
         assert "Next:" not in e["good"], e["when"]
         assert "\n1. " not in e["good"], e["when"]
         assert e["good"].rstrip()[-1] in "?.", e["when"]
-    # The stage-work example must SHOW the inline numbering, or the rule is adjectives again —
-    # which is the one encoding that already failed once (owner decision 2, 2026-08-19).
+    # The stage-work example must SHOW its numbering rather than describe it — describing it is
+    # the encoding that already failed once (owner decision 2, 2026-08-19). That is unchanged.
+    # What changed 2026-08-25 is the LAYOUT it shows: the numbers sat inline, "(1) … (2) … (3)",
+    # until the bia3 run proved the model copies the example's layout as faithfully as its
+    # content — every menu and closing arrived on one line, unscannable on a phone (F6). The
+    # same 2026-08-19 session is recorded in conduct.md as the owner correcting exactly this:
+    # "the options belong one per line". Numbering is still shown; it is shown in that shape.
     gate = by_when["the gate card done right"]["good"]
-    assert "(1)" in gate and "(2)" in gate and "(3)" in gate
+    numbered = [ln for ln in gate.splitlines() if re.match(r"^\d ", ln)]
+    assert len(numbered) == 3, gate
+    assert "(1)" not in gate, "inline numbering is the shape the model copied — F6"
     # The retired shape stays in a `bad` half so the model is shown what it must not copy.
     assert "Next:\n1. " in by_when["a question mid-journey"]["bad"]
 
@@ -927,7 +972,9 @@ def test_the_protocol_is_whatever_the_design_package_says():
     edit; the first was Hans's choice rule the same evening. Size is the budget anchor's job."""
     assert journey_engine.load_conduct() == journey_engine.STAGE_PROTOCOL
     assert journey_engine.STAGE_PROTOCOL.startswith("Present ONLY this stage")
-    assert journey_engine.STAGE_PROTOCOL.endswith("every number with its reason in words.")
+    # the tail sentinel tracks conduct.md's actual last rule — since 2026-08-25 the F6
+    # blank-line rule (its own test above carries the why)
+    assert journey_engine.STAGE_PROTOCOL.endswith("each numbered option on its own line.")
 
 
 def test_a_broken_conduct_file_degrades_to_no_protocol_rather_than_no_stage():
