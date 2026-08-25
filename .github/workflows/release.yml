@@ -61,9 +61,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.tag.outputs.name }}
         run: |
+          set -x
+          gh --version; wc -c notes.md; echo "TAG=[$TAG]"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "release $TAG exists — updating its notes from CHANGELOG.md"
             gh release edit "$TAG" --title "$TAG" --notes-file notes.md
           else
             gh release create "$TAG" --title "$TAG" --notes-file notes.md
           fi
+          # Prove it landed. On 2026-08-25 this step reported success three times in a row
+          # while the repository had zero releases — gh exited 0 and produced nothing. A step
+          # that claims success without doing its job is the exact failure the rest of this
+          # gate exists to catch, so it now reads the result back and fails if it is absent.
+          gh release view "$TAG" --json tagName,isDraft,url
+          test -n "$(gh release view "$TAG" --json tagName --jq .tagName)"
