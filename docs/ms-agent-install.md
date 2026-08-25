@@ -29,7 +29,7 @@ identically on all three.
 |---|---|---|---|
 | Audience | KG + acceptance runs (P7) | external BCM managers, no tenant identity | the estate (owner-commissioned runs) |
 | Auth mode | Microsoft authentication | **No authentication** | bearer, MCP-direct |
-| Channel | Microsoft 365 and Microsoft Teams | Web app → **custom WebChat canvas** at `/demo/bia-live/` (public token endpoint, first-party Direct Line; the page auto-sends the room prompt — §A.18), behind a hashed-path sign-in page | `#bia-workflow` |
+| Channel | Microsoft 365 and Microsoft Teams | Web app → **custom WebChat canvas** at `/demo/bia-live/` (public token endpoint, first-party Direct Line; the page auto-sends the room prompt), behind a hashed-path sign-in page | `#bia-workflow` |
 | Data room | `marschkamp` + any demo room by code | `marschkamp` + any demo room by code | `marschkamp` + any demo room by code |
 | Part D | as below | **byte-identical to below**, no token diff | quoted in `agents/bruno/SOUL.md`, needle-pinned |
 
@@ -288,10 +288,9 @@ deterministic MCP read tools are the fix; knowledge sources have no role in this
 > Instructions programmatically, so drift is invisible until behaviour fails). After any edit
 > here, re-paste into the agent; after any re-paste, re-verify behaviour with
 > `probe_public_agent.py` (a truncated or partial paste is only detectable behaviourally).
-> The block has a third copy: Bruno's SOUL (brain-ops `agents/bruno/SOUL.md` since reform R1,
-> 2026-08-18 — the Buzz seat that runs the same journey MCP-direct) quotes it, and brain-ops
-> `tests/test_repo_shape.py::test_bruno_soul_carries_part_d` pins the changed lines — so every
-> edit here = doc + Copilot re-paste + SOUL block + one test needle. It drifted twice (16.08, 17.08) before that rule.
+> The block has a third copy, in the operator's private ops repo since 2026-08-18: an agent
+> seat that runs the same journey MCP-direct quotes it, and a test there pins the changed
+> lines — so every edit here = doc + Copilot re-paste + that third copy + one test needle. It drifted twice (16.08, 17.08) before that rule.
 >
 > **Why bullet 4 ends the way it does.** The voice ships inside the stage payload, so a turn
 > that calls no tool receives none of it — which is exactly where the 2026-08-19 runs ended
@@ -306,14 +305,15 @@ deterministic MCP read tools are the fix; knowledge sources have no role in this
 > does **not** reproduce under any method tried (the same block before this edit counts 447);
 > the delta this edit added is **+24 words**, which is the figure to trust. Counting convention
 > recorded so the next edit compares like with like. (the reporting-turn standing pair
-> 2026-08-25 — P3/§A.9's adopted
-> ruling, clause 2: ends-open holds on the approval path and lapsed on the *reporting* path, so
+> 2026-08-25 — the adopted
+> ruling's clause 2: ends-open holds on the approval path and lapsed on the *reporting* path, so
 > a turn that only reports gets `1 carry on, 2 stop here` rather than a fork it cannot offer.
 > The ruling's clause 3 — the same sentence in `design/conduct.md` — was **attempted and
 > reverted**: the payload deliberately does NOT carry "End every turn open"
-> (`test_the_protocol_never_asks_permission_for_its_own_next_step`, measured on a six-press
-> run), so Part D is the only lane this rule may occupy. Owner decision pending; the
-> one-room-per-conversation clause 2026-08-25 — A.20, after a
+> (`test_the_protocol_never_asks_permission_for_its_own_next_step`, measured over six
+> consecutive presses), so Part D is the only lane this rule may occupy. That clause was
+> refuted on the evidence rather than deferred. The one-room-per-conversation clause
+> 2026-08-25, after a
 > bia3 session read bia2 on request: deterrence for the accidental case only, since the server
 > cannot bind a room to a caller; written positively because a prohibition here is the shape
 > that failed six times; the marschkamp default is untouched, so a conversation that names no

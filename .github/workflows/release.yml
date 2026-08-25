@@ -51,10 +51,19 @@ jobs:
           python3 scripts/changelog_top.py --file CHANGELOG.md \
             --expect "${{ steps.tag.outputs.name }}" > notes.md
 
-      - name: Create the Release
+      # Create OR update. `gh release create` fails outright on a tag that already has a
+      # Release, which meant a wording fix made to CHANGELOG.md after publication could never
+      # reach the Release body — and the two are meant to be the same text. Re-pushing the tag
+      # now republishes the notes, so the file stays the single source of truth.
+      - name: Create or update the Release
         if: steps.guard.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
-          gh release create "${{ steps.tag.outputs.name }}" \
-            --title "${{ steps.tag.outputs.name }}" --notes-file notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists — updating its notes from CHANGELOG.md"
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          fi

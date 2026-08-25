@@ -31,6 +31,8 @@ room code you mention in passing.
   longer silently switches to it: the assistant says the code belongs to someone else's work
   and offers to carry on there instead. Rooms remain readable by anyone holding the code —
   this is a guardrail against wandering, not access control.
-- Demo room codes are unguessable names instead of a running sequence. Anyone claiming a room
-  by QR code sees no difference; a code you were given before this release will not resolve.
+- Demo rooms are handed out under unguessable names by default, where they used to be numbered
+  in sequence. Anyone claiming a room by QR code sees no difference; a code you were given
+  before this release will not resolve. Numbered codes are still available for handing out one
+  room per seat at an event.
 - Activity lists render as lists. They previously arrived run together in a single paragraph.

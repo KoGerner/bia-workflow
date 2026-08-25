@@ -1794,6 +1794,10 @@ def test_the_release_workflow_can_actually_create_a_release():
     # `v[0-9]*.[0-9]*.[0-9]*` matches "-probe" — the probe run of 2026-08-25 went straight
     # past the guard it was meant to prove.
     assert r"'^v[0-9]+\.[0-9]+\.[0-9]+$'" in wf
+    # Create-or-update. `gh release create` fails on an existing tag, so a correction made to
+    # CHANGELOG.md after publication could never reach the Release body — and the two are
+    # supposed to be the same text by design. Re-pushing the tag has to be able to fix it.
+    assert "gh release edit" in wf
 
 
 def test_changelog_redirects_rather_than_serving_a_file():
