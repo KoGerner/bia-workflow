@@ -9,8 +9,10 @@ from pathlib import Path
 import brand
 
 APP = Path(__file__).resolve().parent.parent
+# public/changelog.html was the third of these until it was retired on 2026-08-25. status.html
+# did NOT take its place: it carries a status palette (including #3e6b15 on fills) and no
+# verbatim TOKENS block, so it is hand-written but not a token surface.
 HAND_WRITTEN = [
-    APP / "public" / "changelog.html",
     APP / "deploy" / "bia-live-gate.html",
     APP / "deploy" / "bia-live-embed.html",
 ]
@@ -46,29 +48,6 @@ def test_the_type_scale_matches_the_reference():
         assert size in brand.TOKENS and tracking in brand.TOKENS
 
 
-def test_no_two_words_are_jammed_together_in_rendered_text():
-    """Adjacent inline elements need a real space, not just a CSS margin.
-
-    `<time>19 Aug</time><span>fix(checks):</span>` rendered as "19 Augfix(checks):" on the
-    live page: a margin does not survive copy-paste, a screen reader, or a viewport where
-    the fixed-width box is a few pixels too narrow. Caught by the owner, not by a check —
-    every verification this session stripped tags to nothing and read the result as fine.
-    Extract text the way a browser joins it, then look for a lowercase letter butted
-    against a capital or a bracket.
-    """
-    import html as _html
-    import re as _re
-
-    page = (APP / "public" / "changelog.html").read_text(encoding="utf-8")
-    body = page.split("</style>", 1)[1]
-    jammed = []
-    for item in _re.findall(r"<li>(.*?)</li>", body, _re.S):
-        text = _re.sub(r"\s+", " ", _html.unescape(_re.sub(r"<[^>]+>", "", item))).strip()
-        if _re.search(r"Aug(?:fix|refine|add|remove)|[a-z]was broken|[a-z]seen live", text):
-            jammed.append(text[:70])
-    assert not jammed, f"words run together in extracted text: {jammed}"
-
-
 def test_the_generators_compose_the_system_rather_than_copying_it():
     """A pasted copy is not consolidation — it just moves the drift somewhere quieter.
 
@@ -95,18 +74,18 @@ def test_nothing_is_an_orphan_or_a_dead_end():
     """
     import re as _re
 
-    changelog = (APP / "public" / "changelog.html").read_text(encoding="utf-8")
     gate = (APP / "deploy" / "bia-live-gate.html").read_text(encoding="utf-8")
     embed = (APP / "deploy" / "bia-live-embed.html").read_text(encoding="utf-8")
     graph_src = (APP / "dep_graph.py").read_text(encoding="utf-8")
 
-    # /changelog is reachable: it is in the shared destination list every page renders.
-    assert any(href == "/changelog" for _, href, _ in brand._DESTINATIONS)
-    # …and the changelog itself does not link to itself in that nav.
-    assert 'class="ghost" href="/changelog"' not in changelog
+    # /changelog was retired 2026-08-25 and its nginx location 301s to GitHub Releases, so it
+    # is no longer a destination. The invariant is not about that page — it is that whatever
+    # IS in the list stays reachable and no page is a dead end.
+    assert not any(href == "/changelog" for _, href, _ in brand._DESTINATIONS)
+    assert brand._DESTINATIONS, "an empty destination list makes every page a dead end"
     # No page is a dead end.
-    for name, page in (("gate", gate), ("changelog", changelog), ("embed", embed)):
-        assert _re.search(r'href="/(demo|changelog)', page), f"{name} has no outbound link"
+    for name, page in (("gate", gate), ("embed", embed)):
+        assert _re.search(r'href="/demo', page), f"{name} has no outbound link"
     # The graph page is unlisted but not stranded.
     assert '<p class="home"><a href="/demo/kb/">' in graph_src
     # …and it is reachable from inside the signed-in workspace, not from public nav.
@@ -127,7 +106,3 @@ def test_the_footer_cta_is_not_black_on_black():
     assert ".foot a.cta{" in brand.FOOTER_CSS, "the CTA override must out-specify `.foot a`"
     rule = _re.search(r"\.foot a\.cta\{([^}]*)\}", brand.FOOTER_CSS).group(1)
     assert "color:var(--bone)" in rule, "footer CTA text must be Bone White on the ink pill"
-
-    # …and the hand-written page carries the same block, not an older copy of it.
-    changelog = (APP / "public" / "changelog.html").read_text(encoding="utf-8")
-    assert brand.FOOTER_CSS in changelog, "changelog has drifted from brand.FOOTER_CSS"

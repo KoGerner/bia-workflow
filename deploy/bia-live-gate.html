@@ -18,9 +18,10 @@
   Consequence to keep in mind: the unguessable path lands in browser history, and the embed
   page carries <meta name="referrer" content="no-referrer"> so it cannot leak to Microsoft.
 
-  Palette and type come from public/changelog.html, which is the reference implementation of the
-  Ditto system for this estate (KG, 2026-08-20). Read its head comment before changing colour
-  here. The previous source was ai-addendum-chat/public/theme.json — the Chainlit app at /chat/,
+  Palette and type come from the Ditto system for this estate (KG, 2026-08-20). Its reference
+  implementation was public/changelog.html until that page was retired on 2026-08-25; brand.py
+  now holds the tokens, and this page and bia-live-embed.html are the hand-written pair that
+  carry them verbatim. Read brand.py before changing colour here. The previous source was ai-addendum-chat/public/theme.json — the Chainlit app at /chat/,
   retired 2026-08-18 — so this page was matching a surface that no longer exists.
 
   To change the password: mint the new directory name and rename it.

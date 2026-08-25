@@ -5,15 +5,17 @@
 <title>Status — BIA Workflow</title>
 <meta name="description" content="Where the BIA Workflow stands: readiness score, what is enforced, what has been seen on a live run, and what is waiting on the owner.">
 <!--
-  Hand-written, same reasoning as changelog.html: this page changes on every scoring session and
-  a builder would put a publish round between the edit and the reader. Not yet served — nginx on
+  Hand-written: this page changes on every scoring session and a builder would put a publish
+  round between the edit and the reader. Not yet served — nginx on
   agent.ai4bcm.org has no catch-all, so a NEW path needs deploy/nginx-agent-ai4bcm.conf plus a
   root round. Until the owner asks for that, this file is opened directly.
 
-  Visual system inherited verbatim from changelog.html (Ditto reference, owner-supplied
-  2026-08-20): parchment canvas, India Ink type, pill shapes, no shadows, no gradients, light
-  theme only. The one addition is the status palette, and it obeys that page's standing rule —
-  COLOUR GOES ON A FILL, NEVER ON TEXT. India Ink on Highlight Green measures 3.32:1, which is
+  Visual system: the Ditto reference, owner-supplied 2026-08-20 — parchment canvas, India Ink
+  type, pill shapes, no shadows, no gradients, light theme only. It reached here through
+  public/changelog.html, retired 2026-08-25. This page is hand-written but is NOT one of the
+  token surfaces tests/test_brand.py checks: it adds a status palette, which is why it is out
+  of HAND_WRITTEN there. That palette obeys the standing rule — COLOUR GOES ON A FILL, NEVER
+  ON TEXT. India Ink on Highlight Green measures 3.32:1, which is
   why green carries white type here and amber carries ink.
 
   Every number on this page has the command that produces it in the footer. A figure with no
@@ -112,7 +114,6 @@ a:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 
   <div class="top">
     <p class="mark"><a href="/demo/kb/">BIA Workflow</a></p>
-    <a class="ghost" href="/changelog">Release notes</a>
     <a class="ghost" href="/demo/bia-workflow-guide/">Manager&rsquo;s guide</a>
   </div>
 

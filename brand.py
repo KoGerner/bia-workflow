@@ -1,19 +1,20 @@
 """The estate's one visual system, in one place.
 
-Source of truth is the Ditto style reference (KG, 2026-08-20), and
-`public/changelog.html` is its reference implementation — read that file's head comment
-before changing anything here.
+Source of truth is the Ditto style reference (KG, 2026-08-20). Its reference implementation
+was `public/changelog.html` until that page was retired on 2026-08-25; the tokens below are
+now the implementation, and `deploy/bia-live-gate.html` is the hand-written page that carries
+them verbatim. Not `public/status.html` — that one is hand-written but adds a status palette
+and is deliberately not a token surface.
 
 Why a Python module and not a shared brand.css: the six HTML surfaces on
-agent.ai4bcm.org deploy through three different lanes. /changelog and /demo/graph/ are
-served straight from the checkout and land with a `git pull`; /demo/kb/, the guide and
-the two hand pages are written into the root-owned /var/www/addendum-demo and need a
-root round. A stylesheet shared across those lanes desynchronises the moment one lane
+agent.ai4bcm.org deploy through three different lanes. /demo/graph/ is served straight
+from the checkout and lands with a `git pull`; /demo/kb/, the guide and the two hand
+pages are written into the root-owned /var/www/addendum-demo and need a root round. A stylesheet shared across those lanes desynchronises the moment one lane
 runs without the other — the page updates and its stylesheet does not, or the reverse.
 Three generators importing one constant cannot desynchronise, because the CSS ships
 inside the page it styles.
 
-That leaves three hand-written pages that cannot import: the changelog and the two
+That leaves three hand-written pages that cannot import: status.html and the two
 deploy/ pages. `tests/test_brand.py` asserts every surface carries a byte-identical
 TOKENS block, so drift is a test failure rather than something you notice by eye.
 
@@ -89,12 +90,13 @@ FOOTER_CSS = """/* The same destinations again at the foot of a long page. Not i
 .foot a.cta:hover{background:var(--charcoal);border-color:var(--charcoal)}"""
 
 # Every destination a reader can reach. One list, so the masthead and the footer can never
-# disagree about what the site contains — which is the failure that made /changelog
-# unreachable from 147 pages while every one of them linked to three other places.
+# disagree about what the site contains — the failure this fixed was /changelog being
+# unreachable from 147 pages while every one of them linked to three other places. That page
+# is retired (2026-08-25) and its nginx location now 301s to GitHub Releases; the invariant
+# stands for whatever is in the list.
 _DESTINATIONS = [
     ("kb", "/demo/kb/", "Knowledge base"),
     ("guide", "/demo/bia-workflow-guide/", "Manager&rsquo;s guide"),
-    ("changelog", "/changelog", "Release notes"),
 ]
 _CTA = ("/demo/bia-live/", "Try the demo")
 

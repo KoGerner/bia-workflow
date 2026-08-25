@@ -1794,3 +1794,13 @@ def test_the_release_workflow_can_actually_create_a_release():
     # `v[0-9]*.[0-9]*.[0-9]*` matches "-probe" — the probe run of 2026-08-25 went straight
     # past the guard it was meant to prove.
     assert r"'^v[0-9]+\.[0-9]+\.[0-9]+$'" in wf
+
+
+def test_changelog_redirects_rather_than_serving_a_file():
+    import pathlib
+    conf = (pathlib.Path(__file__).resolve().parent / "deploy/nginx-agent-ai4bcm.conf").read_text()
+    i = conf.index("location = /changelog")
+    block = conf[i:conf.index("}", i)]
+    assert "return 301" in block
+    assert "github.com/KoGerner/bia-workflow/releases/latest" in block
+    assert "alias" not in block
