@@ -346,14 +346,14 @@ def build(out: Path) -> Path:
     page = (
         '<!doctype html>\n<html lang="en">\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        "<title>Running a BIA with the assistant — a manager's guide — AI Addendum</title>\n"
+        "<title>Running a BIA with the assistant — a manager's guide — BIA-Workflow</title>\n"
         '<meta name="description" content="Plain-language guide for BCM managers: running a '
         'Business Impact Analysis with the AI assistant. The five stages, the '
         'five prompts, what to expect, and what only you can catch.">\n'
         f"<style>{STYLE}{EXTRA}</style>\n"
         '<div class="wrap">\n'
         + brand.masthead("guide") + '\n'
-        '<p class="crumb"><a href="../kb/">AI Addendum</a> / For BCM managers</p>\n'
+        '<p class="crumb"><a href="../kb/">Knowledge base</a> / For BCM managers</p>\n'
         "<h1>Running a BIA with the assistant</h1>\n"
         '<p class="meta">A manager\'s guide <span class="dot">·</span> Teams or your browser '
         '<span class="dot">·</span> <a href="#stages">five stages</a> '
@@ -361,7 +361,7 @@ def build(out: Path) -> Path:
         '<span class="dot">·</span> <a class="hi" href="#start">demo data only</a></p>\n'
         f"{body}\n"
         + brand.footer_nav("guide") + "\n"
-        "<footer>AI Addendum · guidance, not authoritative legal or compliance advice · "
+        "<footer>BIA-Workflow · guidance, not authoritative legal or compliance advice · "
         "AI prepares; people decide, approve and act.</footer>\n"
         "</div>\n"
     )

@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # The same script publish_public_repo.sh blocks on, so CI and the local gate cannot
+      # disagree about what "clean" means. Its rule set and the reasons for it are in the file.
+      - name: Lint
+        run: bash scripts/lint.sh
+
       - name: Run the suite against the fixture corpus
         # BIA_WORKFLOW_DATA_DIR is not optional: one test reads it directly to prove both
         # static page builders follow the same knob.

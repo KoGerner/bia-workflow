@@ -83,6 +83,18 @@ def test_nothing_is_an_orphan_or_a_dead_end():
     # IS in the list stays reachable and no page is a dead end.
     assert not any(href == "/changelog" for _, href, _ in brand._DESTINATIONS)
     assert brand._DESTINATIONS, "an empty destination list makes every page a dead end"
+    # …and every destination that IS listed is built by something in this tree. The nginx
+    # /demo/ location is a catch-all, so it cannot tell a live path from a typo; the builders
+    # can. An independent review on 2026-08-25 pointed out that the check above passes with
+    # _DESTINATIONS aimed at /demo/does-not-exist/ — non-empty is not reachable.
+    built = set()
+    for mod in ("build_kb_pages.py", "build_guide_page.py"):
+        for out in _re.findall(r'DEFAULT_OUT = Path\("([^"]+)"\)',
+                               (APP / mod).read_text(encoding="utf-8")):
+            built.add(out.rstrip("/").rsplit("/", 1)[-1])
+    for _key, href, _label in brand._DESTINATIONS:
+        leaf = href.strip("/").rsplit("/", 1)[-1]
+        assert leaf in built, f"{href} is in the shared nav but no builder here produces it"
     # No page is a dead end.
     for name, page in (("gate", gate), ("embed", embed)):
         assert _re.search(r'href="/demo', page), f"{name} has no outbound link"

@@ -68,7 +68,9 @@ def main(argv: list[str]) -> int:
     if len(argv) != 3:
         return int(bool(sys.stderr.write(f"usage: {argv[0]} <company> <output/…/file.md>\n")) or 2)
     company, path = argv[1], argv[2]
-    rel = check(company, path)
+    # check() raises SystemExit on anything outside the run folder; the return value is
+    # not used, the refusal is.
+    check(company, path)
     # Set explicitly rather than by import order: graph_files computes SECRET_FILE at import
     # time, so an env tweak here would depend on which module imported first.
     graph_files.SECRET_FILE = secret_path()

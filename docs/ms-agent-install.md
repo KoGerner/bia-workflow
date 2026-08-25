@@ -301,7 +301,12 @@ deterministic MCP read tools are the fix; knowledge sources have no role in this
 > For the public agent, `probe_public_agent.py` is the faster read-back — a paste that silently
 > failed to save left it naming the retired room on 2026-08-10, and the probe named the fault in
 > one run.
-> Current block: **472 words** (the reporting-turn standing pair 2026-08-25 — P3/§A.9's adopted
+> Current block: **471 words**, counted reproducibly — `sed -n '/^You are Marschkamp/,/^```$/p'
+> docs/ms-agent-install.md | sed '$d' | wc -w`. The previous line here said 456 and that number
+> does **not** reproduce under any method tried (the same block before this edit counts 447);
+> the delta this edit added is **+24 words**, which is the figure to trust. Counting convention
+> recorded so the next edit compares like with like. (the reporting-turn standing pair
+> 2026-08-25 — P3/§A.9's adopted
 > ruling, clause 2: ends-open holds on the approval path and lapsed on the *reporting* path, so
 > a turn that only reports gets `1 carry on, 2 stop here` rather than a fork it cannot offer.
 > The ruling's clause 3 — the same sentence in `design/conduct.md` — was **attempted and

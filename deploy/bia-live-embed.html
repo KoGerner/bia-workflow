@@ -114,7 +114,6 @@ display:flex;flex-direction:column;padding:1.4rem 1.35rem 0}
 .lab{margin:0 0 .35rem;font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
 text-transform:uppercase;color:var(--on-field-2)}
 
-.roomurl{margin:.1rem 0 0;font-size:.75rem;line-height:1.4;color:var(--on-field-2);
 word-break:break-all}
 .prompt{margin:0 0 .45rem;padding:.45rem .55rem;font-size:.8rem;line-height:1.42;
 background:var(--card);border:1px solid var(--rule-field);border-radius:var(--r)}
@@ -153,15 +152,6 @@ border-top:1px solid var(--rule-field)}
 .links span{display:block;font-size:.745rem;line-height:1.3;color:var(--on-field-2)}
 .links a:hover strong{text-decoration:underline}
 
-.note{margin:.85rem 0 0;padding:.65rem 0 0;border-top:1px solid var(--rule-field);
-font-size:.75rem;line-height:1.4;color:var(--on-field-2)}
-/* Reads as document classification: sticks to the foot of the rail so it stays on screen
-   even when the rail scrolls — a classification you can scroll away from isn't one. */
-.classification{position:sticky;bottom:0;margin:auto 0 0;padding:.6rem 0 .95rem;
-background:var(--field);border-top:1px solid var(--rule-field);
-font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
-text-transform:uppercase;color:var(--on-field-2)}
-
 /* ══ workspace ═════════════════════════════════════════════════════════════ */
 /* Left-aligned, not centred: centring pushed the chat into the middle of the workspace
    and opened a canyon between it and the rail. */
@@ -172,10 +162,6 @@ padding:0 0 .8rem;border-bottom:1px solid var(--line);
 display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;
 gap:.35rem 1.25rem}
 .ctx h1{margin:0;font-size:var(--t-subheading);font-weight:700;letter-spacing:var(--ls-subheading)}
-.ctx p{display:flex;flex-wrap:wrap;gap:.25rem .5rem;margin:.4rem 0 0;
-font-size:var(--t-caption);font-weight:700;letter-spacing:var(--ls-caption);
-text-transform:uppercase;color:var(--muted)}
-.ctx i{font-style:normal;color:var(--muted);opacity:.45}
 /* The escape hatch, sitting with the session's own metadata. It names the SYMPTOM first
    because a blank frame carries no explanation of its own — see note 4. */
 .direct{flex:0 0 auto;margin-top:.3rem;font-size:.775rem;color:var(--muted);
@@ -207,9 +193,6 @@ border:1px solid var(--line);border-radius:var(--r-card)}
   .map summary::after{content:" ▾"}
   .map[open] summary::after{content:" ▴"}
   .map[open] .stages{margin-top:.95rem}
-  /* Stacked, the rail no longer scrolls independently — sticky would pin this to the
-     viewport and float it over the chat. It sits in flow instead. */
-  .classification{position:static;margin:1.15rem 0 0;padding-bottom:0}
   main{padding:1.2rem 1.15rem 1.5rem}
   .frame{max-height:none;min-height:30rem;margin-top:1rem}
 }
@@ -226,44 +209,35 @@ border:1px solid var(--line);border-radius:var(--r-card)}
     </div>
 
     <!-- Demo rooms (2026-08-24): the code IS the routing — said as company, it lands the whole
-         run in that room. A personal link (?room=<code>) fills the prompt, links the files
-         line, and swaps the two marschkamp doors below to the visitor's own room; without the
-         param this stays the brand-room page and the URLs remain a stated pattern, never
-         navigation (rooms URLs are handout material, secret by code). -->
-    <p class="lab" id="roomlab">Have a room code? Say this instead</p>
-    <p class="prompt" id="p2">Start a BIA for room &lt;your code&gt;. Take me through it one
-      stage at a time.</p>
-    <div><button class="copy" id="c2" type="button">Copy</button></div>
-    <p class="roomurl" id="roomurl">Your room&rsquo;s files, live as the run writes them:
-      agent.ai4bcm.org/demo/rooms/&lt;your&nbsp;code&gt;/</p>
+         run in that room. A personal link (?room=<code>) swaps the two marschkamp doors below
+         to the visitor's own room and hides the brand opener above, because the canvas speaks
+         for the visitor and there is nothing left for them to copy. Without the param this
+         stays the brand-room page, whose opener IS the thing to copy. -->
 
     <details class="map" id="map" open>
-      <summary>Workflow map</summary>
+      <summary>Workflow design</summary>
       <ol class="stages">
-        <!-- The five traditional-BIA names (KG + Willem, 2026-08-13); 3a is the owner loop,
-             not one of the five. Source: design/run-bia.yaml `name:`. -->
+        <!-- The five traditional-BIA names (KG + Willem, 2026-08-13). Source:
+             design/run-bia.yaml `name:`. Stage 3a (missing-owner loop) is a real stage and
+             still runs — it was dropped from THIS list by owner ruling 2026-08-25 because it
+             fires only when a dependency has no owner, and a conditional sixth row made the
+             map read as six stages of work to a first-time reader. -->
         <li><span class="n">1</span><span><b>Identification of scope</b>
-          <span>Confirm the department and its activities, approve the guide</span></span></li>
+          <span>Confirm the department and its activities, approve the workflow</span></span></li>
         <li><span class="n">2</span><span><b>Structured interview</b>
-          <span>Check the write-up against what was said</span></span></li>
+          <span>Conduct the interviews, and check against what was said</span></span></li>
         <li><span class="n">3</span><span><b>Convert to the standardised template</b>
-          <span>Decide what it flags</span></span></li>
-        <li><span class="n">3a</span><span><b>Missing-owner loop</b>
-          <span>Only if a dependency has no owner: give the facts, sign off by name</span></span></li>
+          <span>Capture all findings</span></span></li>
         <li><span class="n">4</span><span><b>List the requirements (RTO, MTPD, RPO)</b>
           <span>Approve each card, then the documents</span></span></li>
         <li><span class="n">5</span><span><b>Consolidate + sanity check → handover</b>
-          <span>Approve. The BIA ends here</span></span></li>
+          <span>Approve. The BIA ends here.</span></span></li>
       </ol>
     </details>
 
     <nav class="links">
       <!-- All three open in a new tab: leaving this page would drop a conversation the
            parent cannot restore, since the frame is cross-origin and holds its own session. -->
-      <a href="/demo/bia-workflow-guide/" target="_blank" rel="noopener">
-        <strong>Read the guide</strong>
-        <span>The six stages, the five prompts, and what only you can catch</span>
-      </a>
       <a href="/demo/kb/" target="_blank" rel="noopener">
         <strong>Knowledge base</strong>
         <span>The addendum itself — PP1–PP6, core principles, the do-not-use list</span>
@@ -289,18 +263,13 @@ border:1px solid var(--line);border-radius:var(--r-card)}
       </a>
     </nav>
 
-    <p class="note">It prepares, you decide. Every stage stops at your approval —
-      and nothing is real until it's saved.</p>
-    <p class="classification">Synthetic demo data only</p>
   </div>
 </aside>
 
 <main>
   <header class="ctx">
     <div>
-      <h1>BIA working session</h1>
-      <p><span id="roomname">Marschkamp</span><i>·</i><span>Six-stage workflow</span><i>·</i>
-        <span>Synthetic data only</span></p>
+      <h1>BIA working session for <span id="roomname">Marschkamp</span></h1>
     </div>
     <a class="direct"
        href="https://copilotstudio.microsoft.com/environments/Default-41716283-7cb5-47fe-996f-813640630454/bots/cre2b_BIAWorkflowpublic/webchat?__version__=2"
@@ -322,27 +291,18 @@ let roomPrompt = null;   // set only inside the slug jail below; the canvas send
 const room = (new URLSearchParams(location.search).get('room') || '').trim().toLowerCase();
 if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(room) && room !== 'marschkamp') {
   document.getElementById('brandopener').style.display = 'none';
-  document.getElementById('roomlab').textContent =
-    'Sent for you when the chat opens — copy it only if you use the direct chat link';
   // Hans | BCM wrote this sentence (commissioned 2026-08-25, his words verbatim). It is the
   // first thing a cold BCM manager ever sees, and the page sends it, so it has to earn the
   // turn: it carries the room code (the only thing routing their work to their own room),
   // it reads like something a manager would type in a corridor, and it makes the assistant
-  // prove it has READ the company before asking anything. Probed live before shipping —
-  // 7/7 tool calls carried company=<room>, and the reply opened with a ranked process list
-  // and a recommendation, which is exactly what he asked the first turn to do.
+  // prove it has READ the company before asking anything.
+  // 2026-08-25, owner ruling: Hans's "In one screen: what do you already know about this
+  // company…" is replaced. It earned its keep — probed 7/7 with company=<room> — but it
+  // bought a long first answer, and the first answer is the one a tester waits through.
+  // "In one sentence." caps the reply, not the topic, so the turn arrives sooner without
+  // giving up the read-the-company-first property that made the original work.
   roomPrompt = "I'm the BC manager, room " + room +
-    ". In one screen: what do you already know about this company, and which process " +
-    "would you start with?";
-  document.getElementById('p2').textContent = roomPrompt;
-  const ru = document.getElementById('roomurl');
-  ru.textContent = 'Your room’s files, live as the run writes them: ';
-  const a = document.createElement('a');
-  a.href = '/demo/rooms/' + room + '/';
-  a.target = '_blank';
-  a.rel = 'noopener';
-  a.textContent = 'agent.ai4bcm.org/demo/rooms/' + room + '/';
-  ru.appendChild(a);
+    ". In one sentence. Which company is this, and which process would you start with?";
   const files = document.getElementById('fileslink');
   files.href = '/demo/rooms/' + room + '/';
   files.querySelector('span').textContent =
@@ -360,9 +320,8 @@ const narrow = window.matchMedia('(max-width:60rem)');
 const sync = () => { map.open = !narrow.matches; };
 narrow.addEventListener('change', sync); sync();
 
-for (const [btn, src] of [['c', 'p'], ['c2', 'p2']])
-document.getElementById(btn).addEventListener('click', async function () {
-  const p = document.getElementById(src);
+document.getElementById('c').addEventListener('click', async function () {
+  const p = document.getElementById('p');
   try {
     await navigator.clipboard.writeText(p.textContent.trim());
     this.textContent = 'Copied';

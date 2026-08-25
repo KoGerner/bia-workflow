@@ -7,7 +7,6 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "data"  # file-relative (C15)

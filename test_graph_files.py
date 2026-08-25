@@ -1687,7 +1687,7 @@ def test_only_the_agents_own_read_is_recorded(monkeypatch):
     """The trap this feature dies on: bia_referee reads the method and the register
     internally on every validate call, and the advance gate fetches artifacts itself.
     If those counted, the read gate would always pass while appearing to work."""
-    import bia_referee, graph_files
+    import graph_files
     graph_files.forget_reads()
     graph_files.note_read("marschkamp", "03_Dependencies/dependency-register.json")
     assert graph_files.reads_seen("marschkamp") == {"03_Dependencies/dependency-register.json"}

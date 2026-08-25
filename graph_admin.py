@@ -109,7 +109,6 @@ def create_file(company: str, path: str, content: str, overwrite: bool = False) 
 
 
 if __name__ == "__main__":  # manual smoke: python3 graph_admin.py <company>
-    import json as _json
     import sys as _sys
     comp = _sys.argv[1] if len(_sys.argv) > 1 else "marschkamp"
     print("graph_admin loaded for", comp, "— call move_file/delete_file/create_folder/create_file directly.")

@@ -2,6 +2,10 @@
 # and ctx.elicit (the journey-layer primitives). Bump deliberately, re-test before changing.
 mcp==1.28.0
 pytest>=8.0
+# The lint half of the pre-publish gate (scripts/lint.sh). A dev tool rather than a runtime
+# one, but it is listed here rather than in a second requirements file because both CI and
+# publish_public_repo.sh block on it, and a gate whose dependency is optional is not a gate.
+ruff>=0.16
 # Journey definitions are human-editable YAML (single source of truth).
 pyyaml==6.0.2
 # Imported directly, not just pulled in by mcp: addendum_tools/graph_files/pull_transcripts

@@ -14,9 +14,11 @@ runs without the other — the page updates and its stylesheet does not, or the 
 Three generators importing one constant cannot desynchronise, because the CSS ships
 inside the page it styles.
 
-That leaves three hand-written pages that cannot import: status.html and the two
-deploy/ pages. `tests/test_brand.py` asserts every surface carries a byte-identical
-TOKENS block, so drift is a test failure rather than something you notice by eye.
+That leaves the hand-written pages that cannot import. `tests/test_brand.py` asserts a
+byte-identical TOKENS block for the two deploy/ pages, so drift there is a test failure
+rather than something you notice by eye. `public/status.html` is hand-written too but is
+deliberately NOT in that set — it adds a status palette — so its neutrals can drift without
+a test saying so. Check it by eye when you change these tokens.
 
 The annotation palette from the reference (Highlight Green #3e6b15, Marker Yellow
 #ffdd33, Edit Orange #ff6137, Markup Purple #b26dc2, Comment Blue #0097e6, Sticky Pink

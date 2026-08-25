@@ -7,7 +7,6 @@ the two machine-checkable red-team attacks (fabricated quote, RTO>=MTPD unflagge
 """
 from __future__ import annotations
 
-import copy
 import json
 
 import graph_files

@@ -11,7 +11,6 @@ Rows go to <app root>/data/bia-usage/calls-YYYY-Www.jsonl (0600; data/ is gitign
 from __future__ import annotations
 
 import functools
-import inspect
 import hashlib
 import json
 import os

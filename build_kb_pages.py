@@ -110,7 +110,7 @@ STYLE = brand.root_css() + _ALIASES + brand.MASTHEAD_CSS + "\n" + brand.FOOTER_C
 PAGE = (
     '<!doctype html>\n<html lang="en">\n<meta charset="utf-8">\n'
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-    "<title>{title} — AI Addendum</title>\n"
+    "<title>{title} — BIA-Workflow</title>\n"
     '<meta name="description" content="{desc}">\n'
     "<style>{style}</style>\n"
     '<div class="wrap">\n'
@@ -118,7 +118,7 @@ PAGE = (
     '<p class="crumb"><a href="../">Knowledge base</a> / {breadcrumb}</p>\n'
     "<h1>{title}</h1>\n{rail}{body}\n"
     + brand.footer_nav("") + '\n'
-    "<footer>AI Addendum knowledge base · <a href=\"../\">all sections</a> · "
+    "<footer>BIA-Workflow knowledge base · <a href=\"../\">all sections</a> · "
     "guidance, not authoritative legal or compliance advice"
     '<p class="cite">Cited as {url}</p></footer>\n'
     "</div>\n"
@@ -127,10 +127,10 @@ PAGE = (
 INDEX = (
     '<!doctype html>\n<html lang="en">\n<meta charset="utf-8">\n'
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-    "<title>AI Addendum — knowledge base</title>\n<style>{style}</style>\n"
-    '<div class="wrap">\n' + brand.masthead("kb") + '\n<p class="crumb">AI Addendum</p>\n'
+    "<title>BIA-Workflow — knowledge base</title>\n<style>{style}</style>\n"
+    '<div class="wrap">\n' + brand.masthead("kb") + '\n'
     "<h1>Knowledge base</h1>\n"
-    '<p class="lede">{count} sections, cited by the AI Addendum assistant. '
+    '<p class="lede">{count} sections, cited by the BIA-Workflow assistant. '
     "Each page is the source behind a citation link.</p>\n{groups}\n"
     + brand.footer_nav("kb") + '\n'
     "<footer>guidance, not authoritative legal or compliance advice</footer>\n</div>\n"
@@ -139,7 +139,7 @@ INDEX = (
 FACET_PAGE = (
     '<!doctype html>\n<html lang="en">\n<meta charset="utf-8">\n'
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-    "<title>{label} — AI Addendum</title>\n<style>{style}</style>\n"
+    "<title>{label} — BIA-Workflow</title>\n<style>{style}</style>\n"
     '<div class="wrap">\n'
     + brand.masthead("") + '\n'
     '<p class="crumb"><a href="../../">Knowledge base</a> / {label}</p>\n'
@@ -147,7 +147,7 @@ FACET_PAGE = (
     '<p class="lede">{count} section{plural} tagged this way.</p>\n'
     "<ul>\n{items}\n</ul>\n"
     + brand.footer_nav("") + '\n'
-    "<footer>AI Addendum knowledge base · <a href=\"../../\">all sections</a> · "
+    "<footer>BIA-Workflow knowledge base · <a href=\"../../\">all sections</a> · "
     "guidance, not authoritative legal or compliance advice</footer>\n</div>\n"
 )
 

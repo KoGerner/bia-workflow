@@ -1804,3 +1804,36 @@ def test_changelog_redirects_rather_than_serving_a_file():
     assert "return 301" in block
     assert "github.com/KoGerner/bia-workflow/releases/latest" in block
     assert "alias" not in block
+
+
+def test_the_security_properties_no_behaviour_test_can_see():
+    """Three constructs whose replacement changes no observable behaviour.
+
+    Measured 2026-08-25 by mutation: swapping `hmac.compare_digest(auth[7:], token)` for
+    `auth[7:] != token` passes the entire suite, coverage included — the two are behaviourally
+    identical and differ only in timing. `bandit` and `semgrep -p/python` were both run against
+    this tree and neither flags it (bandit produced 15 findings, all false positives; semgrep
+    produced 1, also false). So the suite is where it gets pinned.
+
+    The same holds for a CSPRNG downgraded to `random`, and for a directory mode widened past
+    0750 — both produce working code that is quietly wrong.
+    """
+    import pathlib
+    import re as _re
+    here = pathlib.Path(__file__).resolve().parent
+    server_src = (here / "server.py").read_text(encoding="utf-8")
+    graph_src = (here / "graph_files.py").read_text(encoding="utf-8")
+    call_log_src = (here / "call_log.py").read_text(encoding="utf-8")
+
+    # 1. The bearer token is compared in constant time, not with ==.
+    assert "hmac.compare_digest(auth[7:], token)" in server_src, \
+        "the bearer comparison must stay timing-safe — == leaks the token one byte at a time"
+
+    # 2. Room slot tokens come from the CSPRNG, never `random`.
+    assert "secrets.token_hex(" in graph_src, "slot tokens must come from `secrets`"
+    assert not _re.search(r"^import random$|^\s+import random$", graph_src, _re.M), \
+        "graph_files must not import `random` — slot tokens are a security boundary"
+
+    # 3. The call-log directory is never wider than 0750 (estate charter).
+    for mode in _re.findall(r"os\.chmod\([A-Z_]+, (0o\d+)\)", call_log_src):
+        assert int(mode, 8) <= 0o750, f"call_log dir mode {mode} is wider than 0750"
