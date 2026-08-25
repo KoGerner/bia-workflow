@@ -311,7 +311,15 @@ async def root(_request):
 # password-derived live-<hash> embed page) must never sit in this repo (pinned by
 # test_mint_embed_base_prints_one_personal_link_per_room), so it is read per request
 # from <token dir>/embed-base — one operator-written line beside the token file.
-_CLAIM_CODE = re.compile(r"bia\d+")
+# Any room-slug directory, not just biaN: codes went back to unguessable bird names on
+# 2026-08-25 (§A.20). Sequential codes existed so a tester could say "I am bia7" and type it;
+# since the canvas types it for them, the only thing sequential still bought was that a
+# neighbour's room is yours ±1 — and rooms are cross-readable AND cross-writable by code.
+_CLAIM_CODE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+# A room holding this marker is never handed out. With bird codes a reserved room is otherwise
+# indistinguishable from a fresh one, and adler-8xtmyt is kept deliberately as the dirty
+# reference room. `touch <room>/.reserved` is the whole interface.
+_RESERVED_MARKER = ".reserved"
 
 
 @mcp.custom_route("/demo/claim", methods=["GET"], include_in_schema=False)
@@ -336,12 +344,16 @@ async def claim_room(request):
             claimed = {json.loads(line)["room"] for line in
                        log.read_text(encoding="utf-8").splitlines() if line.strip()}
         free = [p.name for p in rooms.iterdir()
-                if p.is_dir() and _CLAIM_CODE.fullmatch(p.name) and p.name not in claimed]
+                if p.is_dir() and _CLAIM_CODE.fullmatch(p.name) and p.name not in claimed
+                and not (p / _RESERVED_MARKER).exists()]
         if not free:
             return HTMLResponse(
                 "<h1>All demo rooms are taken</h1>"
                 "<p>Find Konstantin — a fresh batch is one command away.</p>")
-        code = min(free, key=lambda n: int(n[3:]))
+        # Alphabetical, not numeric: `int(name[3:])` assumed biaN and crashes on a bird code.
+        # Which room a scanner gets stopped mattering when the codes stopped being sequential;
+        # what matters is that it is deterministic and never hands the same room out twice.
+        code = min(free)
         with open(log, "a", encoding="utf-8") as f:
             f.write(json.dumps({"room": code, "ts": int(time.time()),
                                 "ua": request.headers.get("user-agent", "")[:120]}) + "\n")

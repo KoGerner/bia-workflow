@@ -1,0 +1,58 @@
+name: release
+
+# The tag is the authorisation, as at buzz. There is no GitHub token on the box that builds
+# this repo — deploy keys push but cannot use the REST API — so the Release is created here
+# with the built-in GITHUB_TOKEN and no secret is ever introduced.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish, e.g. v0.1.0'
+        required: true
+
+permissions:
+  contents: write   # GITHUB_TOKEN is read-only by default; without this the create step 403s.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # No submodules: this job only reads CHANGELOG.md, and fetching design/ would add a
+      # failure mode for nothing.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve the tag
+        id: tag
+        run: echo "name=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # A guard that only `exit 0`s ends the STEP, not the job — the later steps still run and
+      # publish the junk Release it was meant to stop. So it sets an output the rest gate on,
+      # and the job still concludes success: a non-release tag is not a failure.
+      - name: Refuse anything that is not vX.Y.Z
+        id: guard
+        run: |
+          case "${{ steps.tag.outputs.name }}" in
+            v[0-9]*.[0-9]*.[0-9]*)
+              echo "ok=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "not a release tag: ${{ steps.tag.outputs.name }} — nothing published"
+              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Extract the notes
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          python3 scripts/changelog_top.py --file CHANGELOG.md \
+            --expect "${{ steps.tag.outputs.name }}" > notes.md
+
+      - name: Create the Release
+        if: steps.guard.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.name }}" \
+            --title "${{ steps.tag.outputs.name }}" --notes-file notes.md

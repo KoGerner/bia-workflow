@@ -14,6 +14,13 @@ import server  # noqa: E402
 import journeys as journey_engine  # noqa: E402
 
 
+def _rooms_block(text):
+    """The demo-rooms location block, sliced at its own closing brace. The nested dotfile deny
+    is a one-liner at indent 8, so the first `\\n    }` after the opener is the block's own."""
+    i = text.index("location ^~ /demo/rooms/")
+    return text[i:text.index("\n    }", i) + 6]
+
+
 def assert_result(result, *, error: bool | None = None):
     if error is not None:
         assert result.isError is error
@@ -1589,11 +1596,35 @@ def test_embed_auto_sends_the_room_prompt_and_only_the_room_prompt():
             "bia-live-embed.html").read_text(encoding="utf-8")
     assert "let roomPrompt = null;" in html
     i_jail = html.index("if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(room)")
-    i_assign = html.index("roomPrompt = 'Start a BIA for room ' + room +")
+    i_assign = html.index('''roomPrompt = "I'm the BC manager, room " + room +''')
     assert i_assign > i_jail                    # assigned only after the jail passed
-    assert "startConversation" in html          # greeting fires on both page kinds
+    # The canned greeting ("Hello, I'm BIA-Workflow (public)…") is OURS to trigger — it comes
+    # from the startConversation event this store dispatches, not from Direct Line. On a room
+    # page it is dead weight in front of Hans's opening question, so it fires only where
+    # nothing is auto-sent: the brand page, which would otherwise open to an empty transcript.
+    i_prompt = html.index("if (roomPrompt) {")
+    i_greet = html.index("startConversation")
+    assert i_greet > i_prompt, "the greeting must be the else-branch, not unconditional"
+    assert "} else {" in html[i_prompt:i_greet]
     assert "if (roomPrompt)" in html            # the send is conditional on a bound room
     assert html.count("WEB_CHAT/SEND_MESSAGE") == 1
+
+
+def test_embed_canvas_normalises_inline_bullet_runs_into_lists():
+    """F6's last element, witnessed 2026-08-25 on the first canvas run: block spacing and
+    one-option-per-line both took, but the model writes activity lists as INLINE glyph runs
+    ('• a • b • c' in one paragraph) — a shape no conduct rule covers, and the payload has 7
+    chars of headroom left to teach it with. We own the canvas now, so this one is
+    deterministic: the store's INCOMING_ACTIVITY hook rewrites bot text so every inline
+    ' • ' run becomes a real markdown list before rendering. Display layer only — the
+    transcript the server logs is untouched; user messages are never rewritten."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parent / "deploy" /
+            "bia-live-embed.html").read_text(encoding="utf-8")
+    assert "DIRECT_LINE/INCOMING_ACTIVITY" in html
+    assert "role === 'bot'" in html                  # bot text only, never the user's
+    needle = "replace(/" + chr(92) + "s*\u2022" + chr(92) + "s+/g, '" + chr(92) + "n- ')"
+    assert needle in html                       # the glyph run becomes a list
 
 
 # ── the QR claim lane (2026-08-25): one QR on the event wall, 40 simultaneous scans ──────
@@ -1664,6 +1695,38 @@ def test_claim_without_embed_base_fails_legibly(mcp_http, claim_rooms, tmp_path)
     assert "embed-base" in r.text
 
 
+def test_claim_hands_out_a_bird_coded_room_and_skips_a_reserved_one(mcp_http, tmp_path,
+                                                                   monkeypatch):
+    """§A.20 (owner ruling 2026-08-25): codes go back to unguessable bird names. Sequential
+    biaN was chosen so a tester could say "I am bia7" out loud and TYPE it — since the custom
+    canvas the page types it for them, so the only thing sequential still buys is that a
+    neighbour's room is yours ±1. The claim lane must therefore hand out slug-shaped rooms of
+    any shape, and `int(name[3:])` ordering would simply crash on one.
+
+    A room carrying a `.reserved` marker is never handed out — that is how `adler-8xtmyt`
+    stays the dirty reference room without being deleted, now that its bird code is
+    indistinguishable from a fresh one."""
+    rooms = tmp_path / "demo-rooms"
+    for code in ("adler-8xtmyt", "kranich-b2c3d4", "kiebitz-a1b2c3"):
+        (rooms / code).mkdir(parents=True)
+    (rooms / "adler-8xtmyt" / ".reserved").write_text("dirty reference room\n",
+                                                      encoding="utf-8")
+    (rooms.parent / "embed-base").write_text("https://agent.ai4bcm.org/demo/live-x/\n",
+                                             encoding="utf-8")
+    monkeypatch.setattr(server.graph_files, "ROOMS_DIR", rooms)
+    seen = []
+    for _ in range(2):
+        mcp_http.cookies.clear()          # a fresh device each time, not a re-scan
+        r = mcp_http.get("/demo/claim", follow_redirects=False)
+        assert r.status_code == 302, r.status_code
+        seen.append(r.headers["location"].split("?room=")[1])
+    assert "adler-8xtmyt" not in seen, "a reserved room was handed to a tester"
+    assert sorted(seen) == ["kiebitz-a1b2c3", "kranich-b2c3d4"]
+    mcp_http.cookies.clear()
+    r = mcp_http.get("/demo/claim", follow_redirects=False)
+    assert r.status_code == 200 and "All demo rooms are taken" in r.text
+
+
 def test_claim_lane_nginx_location_beats_the_static_demo_alias():
     """The QR claim URL lives under /demo/, which `location ^~ /demo/` serves as static
     files — the exact-match claim location must exist or every scan 404s off the disk.
@@ -1691,9 +1754,39 @@ def test_room_files_download_and_the_listing_still_renders():
     m = text.index("map $uri $rooms_content_disposition")
     assert 'default ""' in text[m:m + 200]                       # listings keep rendering
     assert '~^/demo/rooms/.+[^/]$ "attachment"' in text[m:m + 200]
-    i = text.index("location ^~ /demo/rooms/")
-    block = text[i:text.index("location =", i + 1)]
+    block = _rooms_block(text)
     assert "add_header Content-Disposition $rooms_content_disposition always;" in block
     for repeated in ("Strict-Transport-Security", "X-Content-Type-Options",
                      "Referrer-Policy"):
         assert repeated in block, f"{repeated} lost to add_header inheritance"
+
+
+def test_the_rooms_block_slice_does_not_depend_on_a_later_location_equals():
+    """The slice used to terminate on the next `location =`, which happened to be inside the
+    changelog block's comment. Retiring /changelog then raised ValueError inside a test about
+    room downloads. The block ends at its own closing brace; nothing after it is our business."""
+    conf = (
+        "server {\n"
+        "    location ^~ /demo/rooms/ {\n"
+        "        alias /srv/addendum/demo-rooms/;\n"
+        "        autoindex on;\n"
+        "        location ~ /\\. { return 404; }\n"
+        "    }\n"
+        "}\n"
+    )
+    block = _rooms_block(conf)
+    assert "autoindex on;" in block
+    assert "alias /srv/addendum/demo-rooms/;" in block
+
+
+def test_the_release_workflow_can_actually_create_a_release():
+    """Four things the spec omitted and each of which fails only at release time:
+    the tag trigger, the write permission (GITHUB_TOKEN is read-only by default and the
+    create step 403s without it), a manual fallback, and a guard so a junk tag cannot
+    publish a junk Release."""
+    import pathlib
+    wf = (pathlib.Path(__file__).resolve().parent / ".github/workflows/release.yml").read_text()
+    assert "tags:" in wf and "v*" in wf
+    assert "contents: write" in wf
+    assert "workflow_dispatch:" in wf
+    assert "changelog_top.py" in wf and "--expect" in wf

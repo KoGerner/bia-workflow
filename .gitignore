@@ -9,3 +9,8 @@ public/graph/*/
 !public/graph/marschkamp/
 demo-rooms/
 demo-seed*/
+
+# Claude Code session scaffolding: per-session settings and the worktrees a parallel session
+# checks out under here. Untracked and unignored, it made every publish refuse — both
+# publish_public_repo.sh and release.sh gate on a clean tree.
+.claude/

@@ -323,7 +323,16 @@ if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(room) && room !== 'marschkamp') {
   document.getElementById('brandopener').style.display = 'none';
   document.getElementById('roomlab').textContent =
     'Sent for you when the chat opens — copy it only if you use the direct chat link';
-  roomPrompt = 'Start a BIA for room ' + room + '. Take me through it one stage at a time.';
+  // Hans | BCM wrote this sentence (commissioned 2026-08-25, his words verbatim). It is the
+  // first thing a cold BCM manager ever sees, and the page sends it, so it has to earn the
+  // turn: it carries the room code (the only thing routing their work to their own room),
+  // it reads like something a manager would type in a corridor, and it makes the assistant
+  // prove it has READ the company before asking anything. Probed live before shipping —
+  // 7/7 tool calls carried company=<room>, and the reply opened with a ranked process list
+  // and a recommendation, which is exactly what he asked the first turn to do.
+  roomPrompt = "I'm the BC manager, room " + room +
+    ". In one screen: what do you already know about this company, and which process " +
+    "would you start with?";
   document.getElementById('p2').textContent = roomPrompt;
   const ru = document.getElementById('roomurl');
   ru.textContent = 'Your room’s files, live as the run writes them: ';
@@ -404,14 +413,34 @@ const REGIONAL_ENDPOINT = TENANT_API +
     const css = getComputedStyle(document.documentElement);
     const v = n => css.getPropertyValue(n).trim();
     const store = window.WebChat.createStore({}, ({ dispatch }) => next => action => {
+      if (action.type === 'DIRECT_LINE/INCOMING_ACTIVITY') {
+        // F6, last element (witnessed 2026-08-25): the model writes activity lists as
+        // inline glyph runs — "• a • b • c" in one paragraph. No conduct rule covers it
+        // and the payload budget is spent, so the surface we own fixes it: every inline
+        // "• " run in BOT text becomes a real markdown list before rendering. Display
+        // layer only — the server's transcript is untouched, user messages never touched.
+        // The heading-marker strip stops "• ## Scope" turning into an h2 inside a list.
+        const a = action.payload && action.payload.activity;
+        if (a && a.type === 'message' && a.from && a.from.role === 'bot'
+            && a.text && a.text.indexOf('\u2022') !== -1) {
+          a.text = a.text
+            .replace(/\s*•\s+/g, '\n- ')
+            .replace(/(\n- )#+\s*/g, '$1')
+            .replace(/^\n/, '');
+        }
+      }
       if (action.type === 'DIRECT_LINE/CONNECT_FULFILLED') {
-        // the greeting the hosted frame used to trigger for us …
-        dispatch({ type: 'WEB_CHAT/SEND_EVENT',
-                   payload: { name: 'startConversation', value: '' } });
-        // … then the room binding, page-owned, on EVERY conversation (§A.18). The brand
-        // page leaves roomPrompt null and sends nothing.
+        // The room binding, page-owned, on EVERY conversation (§A.18) — and it replaces the
+        // canned greeting rather than following it. "Hello, I'm BIA-Workflow (public). How
+        // can I help?" is dead weight in front of a question the page already asked, so a
+        // room page opens straight on Hans's sentence (owner ruling 2026-08-25).
         if (roomPrompt) {
           dispatch({ type: 'WEB_CHAT/SEND_MESSAGE', payload: { text: roomPrompt } });
+        } else {
+          // The brand page auto-sends nothing, so without this it opens to an empty
+          // transcript. The greeting is ours to fire: it is this event that triggers it.
+          dispatch({ type: 'WEB_CHAT/SEND_EVENT',
+                     payload: { name: 'startConversation', value: '' } });
         }
       }
       return next(action);
