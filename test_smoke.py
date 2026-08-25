@@ -1790,3 +1790,7 @@ def test_the_release_workflow_can_actually_create_a_release():
     assert "contents: write" in wf
     assert "workflow_dispatch:" in wf
     assert "changelog_top.py" in wf and "--expect" in wf
+    # Anchored, digits-only. The case glob this replaced accepted v0.0.0-probe, because * in
+    # `v[0-9]*.[0-9]*.[0-9]*` matches "-probe" — the probe run of 2026-08-25 went straight
+    # past the guard it was meant to prove.
+    assert r"'^v[0-9]+\.[0-9]+\.[0-9]+$'" in wf

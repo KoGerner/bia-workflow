@@ -34,14 +34,16 @@ jobs:
       # and the job still concludes success: a non-release tag is not a failure.
       - name: Refuse anything that is not vX.Y.Z
         id: guard
+        # A case glob cannot say "digits only": v[0-9]*.[0-9]*.[0-9]* accepts v0.0.0-probe,
+        # because * matches -probe. Measured on the probe run of 2026-08-25, which sailed
+        # through this step. An anchored regex is the check that was meant.
         run: |
-          case "${{ steps.tag.outputs.name }}" in
-            v[0-9]*.[0-9]*.[0-9]*)
-              echo "ok=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "not a release tag: ${{ steps.tag.outputs.name }} — nothing published"
-              echo "ok=false" >> "$GITHUB_OUTPUT" ;;
-          esac
+          if printf '%s' "${{ steps.tag.outputs.name }}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not a release tag: ${{ steps.tag.outputs.name }} — nothing published"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Extract the notes
         if: steps.guard.outputs.ok == 'true'
