@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email **konstantin@kgerner.at**. Please do not open a public issue for a security report.
+Email **contact@kgerner.com**. Please do not open a public issue for a security report.
 
 Say what you found, how to reproduce it, and what you think the impact is. You will get an
 acknowledgement; if the report is valid you will be told when a fix ships, and credited if you
